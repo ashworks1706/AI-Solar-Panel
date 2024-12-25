@@ -1,6 +1,10 @@
 # AI Solar Panel
 
-This repository contains the deep learning component of an innovative self-adjusting solar panel system. Our project aims to maximize solar energy absorption by accurately tracking the sun's position using computer vision and deep learning techniques, running on a microcontroller.
+An innovative self-adjusting solar panel system that maximizes energy absorption using computer vision and deep learning.
+
+## Project Overview
+
+This repository contains the deep learning component of our AI-powered solar panel tracking system. The project aims to optimize solar energy capture by accurately tracking the sun's position in real-time, using a lightweight deep learning model running on a microcontroller.
 
 ## Key Features
 
@@ -12,18 +16,17 @@ This repository contains the deep learning component of an innovative self-adjus
 
 ## System Architecture
 
-The system operates as follows:
-1. A 480p-720p camera captures images of the sky
-2. The deep learning model detects the sun's position
-3. The microcontroller processes the input and calculates the optimal panel alignment
-4. Servo motors adjust the panel's azimuth and attitude based on the calculated coordinates
+1. 480p-720p camera captures sky images
+2. Deep learning model detects sun's position
+3. Microcontroller processes input and calculates optimal panel alignment
+4. Servo motors adjust panel's azimuth and attitude
 
 ## Technical Details
 
 - **Model**: Lightweight deep learning model (potentially YOLOv5)
 - **Hardware**: Teensy or Arduino Microcontroller
 - **Additional Sensors**: Inertial Measurement Unit (IMU) for current position and orientation
-- **Programming Languages**: C for firmware and control mechanisms, potentially Python for the deep learning model
+- **Programming Languages**: C++ for firmware and control mechanisms, potentially Python for the deep learning model
 - **Power Management**: Ensures peak wattage draw does not exceed average power generated
 
 ## Mechanical Design
@@ -41,26 +44,45 @@ The system operates as follows:
 
 ## Setup and Installation
 
-1. Install all requirements (specific instructions to be added)
-2. Run the main Python file
-3. Ensure all components are properly connected and calibrated
+1. Clone the repository
+2. Install dependencies (list to be added)
+3. Configure hardware components
+4. Run the main program
 
-## Docs
+Detailed instructions will be provided in the future.
 
-<iframe src="https://docs.google.com/document/d/e/2PACX-1vTQtS80Zp_muUi1xyMZ8IFwYgaySZ4D7vBur8yWQCN2zatHVbE12JztivykVW7TwlOfLfKK83lmgj90/pub?embedded=true"></iframe>
+## Current Progress
 
-## Contributors
+### Mechanical
+- [ ] Select appropriate solar panel based on wattage requirements
+- [ ] Select appropriate energy storage solution (battery)
+- [ ] Create initial design sketches
+- [ ] Develop preliminary mechanical design
+- [ ] Conduct initial FEA analysis for wind effects and stability
+- [ ] Implement waterproofing measures
 
-- **@Ampers8nd (Justin Erd.)**: Handled mechanical design
-- **@Zhoujjh3 (Justin Zhou)**: Managed electrical components
-- **@somwrks (Ash S.)**: Developed deep learning component
+### Software / Vision
+- [ ] Research lightweight models for microcontrollers (YOLOv5, YOLOv8)
+- [ ] Select optimal dataset for training
+- [ ] Train and evaluate models
+- [ ] Implement and test fallback algorithm
 
 ## Future Improvements
 
-- Optimize the deep learning model for microcontroller deployment
-- Enhance the fallback algorithm for better performance in adverse weather conditions
-- Improve integration between software and hardware components
+- Optimize deep learning model for microcontroller deployment
+- Enhance fallback algorithm for adverse weather conditions
+- Improve software-hardware integration
+
+## Contributors
+
+- **@Ampers8nd (Justin Erd.)**: Mechanical design
+- **@Zhoujjh3 (Justin Zhou)**: Electrical components
+- **@somwrks (Ash S.)**: Deep learning development
 
 ## Contributing
 
-We welcome contributions to improve any aspect of our solar panel system. Please refer to our contributing guidelines for more information.
+We welcome contributions to improve any aspect of our solar panel system. Please open an issue or submit a pull request with your suggestions.
+
+## License
+
+This project is licensed under the MIT License - see the [MIT](LICENSE) file for details.
