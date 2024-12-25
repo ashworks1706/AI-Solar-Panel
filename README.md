@@ -13,6 +13,8 @@ This repository contains the deep learning component of our AI-powered solar pan
 - **Automated Adjustment**: Provides coordinates to guide the solar panel's orientation for maximum sunlight exposure.
 - **Fallback Algorithm**: Implements a non-ML algorithm for tracking during heavy cloud cover or rain.
 - **Performance Tracking**: Monitors wattage generation and usage for comparison between algorithmic and deep-learning modes.
+- **Adaptive Detection Intervals**: Adjusts detection frequency based on sun movement to optimize power usage.
+- **Camera Management**: Activates the camera only when needed for detection to conserve energy.
 
 ## System Architecture
 
@@ -23,11 +25,12 @@ This repository contains the deep learning component of our AI-powered solar pan
 
 ## Technical Details
 
-- **Model**: Lightweight deep learning model (potentially YOLOv5)
+- **Model**: Lightweight deep learning model (YOLOv5)
 - **Hardware**: Teensy or Arduino Microcontroller
 - **Additional Sensors**: Inertial Measurement Unit (IMU) for current position and orientation
-- **Programming Languages**: C++ for firmware and control mechanisms, potentially Python for the deep learning model
+- **Programming Languages**: C++ for firmware and control mechanisms, Python for the deep learning model
 - **Power Management**: Ensures peak wattage draw does not exceed average power generated
+- **Location Detection**: Automatically determines the system's geographical location for accurate sun tracking
 
 ## Mechanical Design
 
@@ -45,11 +48,9 @@ This repository contains the deep learning component of our AI-powered solar pan
 ## Setup and Installation
 
 1. Clone the repository
-2. Install dependencies (list to be added)
+2. Install dependencies
 3. Configure hardware components
 4. Run the main program
-
-Detailed instructions will be provided in the future.
 
 ## Current Progress
 
@@ -62,16 +63,20 @@ Detailed instructions will be provided in the future.
 - [ ] Implement waterproofing measures
 
 ### Software / Vision
-- [ ] Research lightweight models for microcontrollers (YOLOv5, YOLOv8)
-- [ ] Select optimal dataset for training
-- [ ] Train and evaluate models
-- [ ] Implement and test fallback algorithm
+- [x] Implement YOLOv5 model for sun detection
+- [x] Develop adaptive detection interval algorithm
+- [x] Implement camera management for power conservation
+- [x] Create fallback algorithm for adverse weather conditions
+- [x] Integrate automatic location detection
+- [ ] Optimize model for microcontroller deployment
+- [ ] Conduct comprehensive testing and performance analysis
 
 ## Future Improvements
 
-- Optimize deep learning model for microcontroller deployment
-- Enhance fallback algorithm for adverse weather conditions
+- Further optimize deep learning model for microcontroller deployment
+- Enhance fallback algorithm for various weather conditions
 - Improve software-hardware integration
+- Implement more sophisticated power management techniques
 
 ## Contributors
 
@@ -85,4 +90,5 @@ We welcome contributions to improve any aspect of our solar panel system. Please
 
 ## License
 
-This project is licensed under the MIT License - see the [MIT](LICENSE) file for details.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
