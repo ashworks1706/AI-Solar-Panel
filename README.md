@@ -45,6 +45,10 @@ The system operates as follows:
 2. Run the main Python file
 3. Ensure all components are properly connected and calibrated
 
+## Docs
+
+<iframe src="https://docs.google.com/document/d/e/2PACX-1vTQtS80Zp_muUi1xyMZ8IFwYgaySZ4D7vBur8yWQCN2zatHVbE12JztivykVW7TwlOfLfKK83lmgj90/pub?embedded=true"></iframe>
+
 ## Contributors
 
 - **@Ampers8nd (Justin Erd.)**: Handled mechanical design
