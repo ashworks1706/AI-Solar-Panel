@@ -40,7 +40,7 @@ def apply_sun_filter(frame):
 
 
 # Load the pre-trained model
-model = get_model(model_id="sun-tracking-555mn/4", api_key="j1wL1N5IgwOIiKW4RYuo")
+model = get_model(model_id="sun-tracking-555mn/4", api_key="")
 
 # Create supervision annotators
 bounding_box_annotator = sv.BoxAnnotator()
