@@ -64,7 +64,7 @@ def turn_on_camera():
     return cap
 
 # Load the pre-trained model
-model = get_model(model_id="sun-tracking-555mn/4", api_key="")
+model = get_model(model_id="sun-tracking-555mn/4", api_key=" ")
 
 # Create supervision annotators
 bounding_box_annotator = sv.BoxAnnotator()
