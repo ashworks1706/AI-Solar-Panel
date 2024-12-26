@@ -25,7 +25,7 @@ This repository contains the deep learning component of our AI-powered solar pan
 
 ## Technical Details
 
-- **Model**: Lightweight deep learning model (YOLOv5)
+- **Model**: Lightweight deep learning model (YOLOv8 converted via LiteRT)
 - **Hardware**: Teensy or Arduino Microcontroller
 - **Additional Sensors**: Inertial Measurement Unit (IMU) for current position and orientation
 - **Programming Languages**: C++ for firmware and control mechanisms, Python for the deep learning model
