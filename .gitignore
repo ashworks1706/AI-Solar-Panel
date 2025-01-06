@@ -1,2 +1,3 @@
 /.venv
 sun_tracker_model.pt
+appConfig.json

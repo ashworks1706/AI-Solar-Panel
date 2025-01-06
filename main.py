@@ -8,6 +8,19 @@ from suncalc import get_position
 import math
 import geocoder
 import os
+import json
+
+# Load the API key from appConfig.json
+try:
+    with open('appConfig.json') as config_file:
+        config = json.load(config_file)
+    api_key = config.get('ROBOFLOW_API_KEY', '')
+except FileNotFoundError:
+    print("appConfig.json not found. Please make sure the file exists in the same directory as the script.")
+    api_key = ''
+except json.JSONDecodeError:
+    print("Error decoding appConfig.json. Please make sure it's a valid JSON file.")
+    api_key = ''
 
 def draw_central_box(frame, box_size=100):
     height, width = frame.shape[:2]
@@ -52,7 +65,7 @@ def calculate_detection_interval(lat, lon, current_time):
         return 300
 
 def main():
-    model = get_model(model_id="sun-tracking-555mn/4", api_key="")
+    model = get_model(model_id="sun-tracking-555mn/4", api_key=api_key)
     bounding_box_annotator = sv.BoxAnnotator()
     label_annotator = sv.LabelAnnotator()
 
