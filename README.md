@@ -45,6 +45,13 @@ This repository contains the deep learning component of our AI-powered solar pan
 - Incorporates appropriate energy storage solution (battery)
 - Designed to operate within the power constraints of the solar panel
 
+## Tests
+
+![image](https://github.com/user-attachments/assets/fd3bf47a-cccb-419e-9e1a-c9025847882e)
+
+https://github.com/user-attachments/assets/189f948e-8e01-4507-97a3-aa703d4fa4bc
+
+
 ## Setup and Installation
 
 1. Clone the repository
