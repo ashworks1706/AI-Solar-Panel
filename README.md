@@ -45,7 +45,7 @@ This repository contains the deep learning component of our AI-powered solar pan
 - Incorporates appropriate energy storage solution (battery)
 - Designed to operate within the power constraints of the solar panel
 
-## [Tests are here](https://github.com/ashworks1706/AI-Solar-Panel/tree/b4bc0c920afbaf2f091fc8c715e0ca4076ae01cf/results)
+## [Tests are here](https://github.com/ashworks1706/AI-Solar-Panel/tree/main/results)
 
 ## Setup and Installation
 
@@ -65,7 +65,7 @@ This repository contains the deep learning component of our AI-powered solar pan
 - [ ] Implement waterproofing measures
 
 ### Software / Vision
-- [x] Implement YOLOv5 model for sun detection
+- [x] Implement YOLOv8 model for sun detection
 - [x] Develop adaptive detection interval algorithm
 - [x] Implement camera management for power conservation
 - [x] Create fallback algorithm for adverse weather conditions
