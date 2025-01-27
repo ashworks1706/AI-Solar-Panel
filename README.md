@@ -47,6 +47,10 @@ This repository contains the deep learning component of our AI-powered solar pan
 
 ## [Tests are here](https://github.com/ashworks1706/AI-Solar-Panel/tree/main/results)
 
+#### Latest sun_tracker_v2 model demo
+
+https://github.com/user-attachments/assets/519e89f1-7520-4b71-8e93-31d76b9abcc4
+
 ## Setup and Installation
 
 1. Clone the repository
@@ -68,8 +72,10 @@ This repository contains the deep learning component of our AI-powered solar pan
 - [x] Implement YOLOv8 model for sun detection
 - [x] Develop adaptive detection interval algorithm
 - [x] Implement camera management for power conservation
-- [x] Create fallback algorithm for adverse weather conditions
 - [x] Integrate automatic location detection
+- [ ] Train on more data for v3
+- [ ] Integrate Weather APIs for accurate prediction
+- [ ] Create fallback algorithm for adverse weather conditions
 - [ ] Optimize model for microcontroller deployment
 - [ ] Conduct comprehensive testing and performance analysis
 
