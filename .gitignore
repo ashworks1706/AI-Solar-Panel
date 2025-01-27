@@ -1,3 +1,8 @@
 /.venv
-sun_tracker_model.pt
+*.pt
 appConfig.json
+/ml_env
+runs/detect/train3/weights/best.pt
+runs/detect/train3/weights/last.pt
+/custom_dataset_v2
+/custom_dataset
