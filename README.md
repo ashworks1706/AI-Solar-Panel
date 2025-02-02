@@ -57,6 +57,7 @@ This repository contains the deep learning component of our AI-powered solar pan
 ## Current Progress
 
 ### Mechanical
+
 - [ ] Select appropriate solar panel based on wattage requirements
 - [ ] Select appropriate energy storage solution (battery)
 - [ ] Create initial design sketches
@@ -65,20 +66,15 @@ This repository contains the deep learning component of our AI-powered solar pan
 - [ ] Implement waterproofing measures
 
 ### Software / Vision
-- [x] Implement YOLOv8 model for sun detection
-- [x] Develop adaptive detection interval algorithm
-- [x] Implement camera management for power conservation
-- [x] Create fallback algorithm for adverse weather conditions
-- [x] Integrate automatic location detection
+
+- [X] Implement YOLOv8 model for sun detection
+- [X] Develop adaptive detection interval algorithm
+- [X] Implement camera management for power conservation
+- [X] Create fallback algorithm for adverse weather conditions
+- [ ] Finalize which model to use whether custom or Roboflow
+- [ ] Integrate automatic location detection
 - [ ] Optimize model for microcontroller deployment
 - [ ] Conduct comprehensive testing and performance analysis
-
-## Future Improvements
-
-- Further optimize deep learning model for microcontroller deployment
-- Enhance fallback algorithm for various weather conditions
-- Improve software-hardware integration
-- Implement more sophisticated power management techniques
 
 ## Contributors
 
@@ -93,4 +89,3 @@ We welcome contributions to improve any aspect of our solar panel system. Please
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
