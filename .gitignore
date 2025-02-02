@@ -2,6 +2,6 @@
 *.pt
 appConfig.json
 /ml_env
-runs/detect/train3/weights/best.pt
-runs/detect/train3/weights/last.pt
 /datasets
+/models/sun_tracker_v3/sun_tracker_v3_float32.tflite
+*.onnx
