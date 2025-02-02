@@ -47,6 +47,10 @@ This repository contains the deep learning component of our AI-powered solar pan
 
 ## [Tests are here](https://github.com/ashworks1706/AI-Solar-Panel/tree/main/results)
 
+#### Latest sun_tracker_v2 model demo
+
+https://github.com/user-attachments/assets/519e89f1-7520-4b71-8e93-31d76b9abcc4
+
 ## Setup and Installation
 
 1. Clone the repository
