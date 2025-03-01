@@ -9,6 +9,16 @@ import math
 import geocoder
 import os
 import json
+import warnings
+
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+
+# Suppress UserWarnings
+warnings.filterwarnings('ignore', category=UserWarning)
+
+# Suppress ONNX Runtime warnings
+os.environ['ORT_LOGGING_LEVEL'] = '3'
 
 # Load the API key from appConfig.json
 try:
@@ -54,7 +64,8 @@ def calculate_sun_movement(lat, lon, time1, time2):
     return math.degrees(movement)
 
 def calculate_detection_interval(lat, lon, current_time):
-    # return 0 - for test purposes
+    return 0 
+    # - for test purposes
     future_time = current_time + timedelta(minutes=5)
     movement = calculate_sun_movement(lat, lon, current_time, future_time)
     if movement > 1:
@@ -82,7 +93,7 @@ def main():
         print("Invalid choice. Please enter 'webcam' or 'video'.")
 
     if choice == 'webcam':
-        cap = cv2.VideoCapture(0)
+        cap = cv2.VideoCapture("/dev/video0")
     else:
         while True:
             video_path = input("Enter the path to your video file: ")
