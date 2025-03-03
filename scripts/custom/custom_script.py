@@ -9,14 +9,16 @@ import os
 import json
 import warnings
 import math
+from supervision import Detections
 import tensorflow as tf  # For TensorFlow Lite interpreter
 
 warnings.filterwarnings('ignore', category=UserWarning)
 
 # Environment settings to suppress unnecessary logs
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
-os.environ['ORT_LOGGING_LEVEL'] = '3'
+
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Suppress TensorFlow logs
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'  # Disable oneDNN optimizations
+# os.environ['CUDA_VISIBLE_DEVICES'] = '-1'  # Force CPU-only mode for TensorFlow Lite
 
 # Load configuration (if needed for other parts of the project)
 try:
@@ -38,37 +40,80 @@ def draw_central_box(frame, box_size=100):
 
 # Function to load and initialize the TensorFlow Lite model
 def load_tflite_model(model_path):
-    """Load and initialize the TensorFlow Lite model."""
+    """Load and initialize TFLite model with error handling"""
     try:
-        interpreter = tf.lite.Interpreter(model_path=model_path)
+        interpreter = tf.lite.Interpreter(
+            model_path=model_path,
+            num_threads=4  # Optimize for multi-core CPUs
+        )
         interpreter.allocate_tensors()
+        print(f"Model {model_path} loaded successfully")
         return interpreter
     except Exception as e:
-        print(f"Error loading TensorFlow Lite model: {e}")
+        print(f"Error loading model: {str(e)}")
         return None
+
 
 # Function to run inference on a frame using the TensorFlow Lite model
 def run_inference(interpreter, frame):
-    """Run inference on a frame using the TensorFlow Lite model."""
+    """Run inference with proper preprocessing for 640-trained model"""
     try:
         input_details = interpreter.get_input_details()
         output_details = interpreter.get_output_details()
 
-        # Preprocess the frame (resize and normalize)
-        input_shape = input_details[0]['shape'][1:3]  # Get input shape (height, width)
-        resized_frame = cv2.resize(frame, (input_shape[1], input_shape[0]))
-        input_data = np.expand_dims(resized_frame / 255.0, axis=0).astype(np.float32)
+        # Get model input specifications
+        input_shape = input_details[0]['shape'][1:3]  # Expected (640, 640)
+        dtype = input_details[0]['dtype']
 
-        # Set input tensor and invoke the model
+        # Maintain aspect ratio with letterbox resize
+        height, width = frame.shape[:2]
+        scale = min(input_shape[0]/height, input_shape[1]/width)
+        new_size = (int(width*scale), int(height*scale))
+        
+        # Resize with antialiasing and preserve aspect ratio
+        resized = cv2.resize(frame, new_size, interpolation=cv2.INTER_LINEAR)
+        
+        # Create canvas with model's expected size
+        canvas = np.full((input_shape[0], input_shape[1], 3), 114, dtype=np.uint8)
+        canvas[0:new_size[1], 0:new_size[0]] = resized
+        
+        # Convert to float32 and normalize (same as training)
+        input_data = np.expand_dims(canvas, axis=0).astype(np.float32) / 255.0
+
+        # Set tensor and invoke
         interpreter.set_tensor(input_details[0]['index'], input_data)
         interpreter.invoke()
 
-        # Get output tensor (assuming single output)
-        output_data = interpreter.get_tensor(output_details[0]['index'])
-        return output_data
+        return interpreter.get_tensor(output_details[0]['index']).squeeze()
+    
     except Exception as e:
-        print(f"Error during inference: {e}")
+        print(f"Inference error: {e}")
         return None
+
+
+# If you want labels, add class_id to your Detections
+def parse_detections(output_data):
+    """Parse detections with placeholder class_id"""
+    try:
+        xyxy = []
+        confidence = []
+        class_id = []
+        
+        for detection in output_data:
+            if detection[-1] > 0.5:
+                xyxy.append(detection[:4])
+                confidence.append(detection[-1])
+                class_id.append(0)  # Single class (sun) = class 0
+        
+        return Detections(
+            xyxy=np.array(xyxy),
+            confidence=np.array(confidence),
+            class_id=np.array(class_id)
+        )
+    except Exception as e:
+        print(f"Error parsing detections: {e}")
+        return Detections.empty()
+
 
 def main():
     # Load your custom TensorFlow Lite model
@@ -79,7 +124,9 @@ def main():
         print("Failed to load the TensorFlow Lite model. Exiting...")
         return
 
-    bounding_box_annotator = sv.BoxAnnotator()
+    bounding_box_annotator = sv.BoxAnnotator(
+    color_lookup=sv.ColorLookup.INDEX  # Use detection index for coloring
+)
     label_annotator = sv.LabelAnnotator()
 
     g = geocoder.ip('me')
@@ -133,24 +180,36 @@ def main():
                 # Run inference on the current frame using the custom model
                 results = run_inference(interpreter, frame)
 
-                if results is not None and len(results) > 0:
-                    print(f"Inference results: {results}")
+                if results is not None:
+                    detections = parse_detections(results)
 
-                    # Draw central box for visualization purposes
-                    top_left, bottom_right = draw_central_box(frame)
+                    if len(detections) > 0:
+                        print(f"Detections: {detections}")
 
-                    # Annotate detections on the frame (if applicable)
-                    detections = sv.Detections.from_inference(results)  # Adjust this based on your output format
-                    annotated_frame = bounding_box_annotator.annotate(scene=frame, detections=detections)
-                    annotated_frame = label_annotator.annotate(scene=annotated_frame, detections=detections)
+                        # Draw central box for visualization purposes
+                        top_left, bottom_right = draw_central_box(frame)
 
-                    out.write(annotated_frame)  # Write annotated frame to output video
+                        # Annotate detections on the frame (if applicable)
+                        annotated_frame = bounding_box_annotator.annotate(
+                            scene=frame,
+                            detections=detections
+                        )
+                        # Add label annotations if needed
+                        class_names = {0: "sun", 1:"class_0"}
+                        annotated_frame = label_annotator.annotate(
+                            scene=annotated_frame,
+                            detections=detections,
+                            labels=[class_names[cid] for cid in detections.class_id]
+                        )
 
-                    cv2.imshow("Sun Detection", annotated_frame)  # Display annotated frame in popup window
 
-                else:
-                    print("No detections made.")
-                    out.write(frame)  # Write original frame when no detections are made
+                        out.write(annotated_frame)  # Write annotated frame to output video
+
+                        cv2.imshow("Sun Detection", annotated_frame)  # Display annotated frame in popup window
+
+                    else:
+                        print("No detections made.")
+                        out.write(frame)  # Write original frame when no detections are made
 
                 last_detection_time = current_time
 

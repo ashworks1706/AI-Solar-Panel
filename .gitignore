@@ -1,4 +1,4 @@
-/.venv
+/venv
 *.pt
 appConfig.json
 /ml_env
