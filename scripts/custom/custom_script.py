@@ -1,228 +1,335 @@
-import supervision as sv
 import cv2
-import numpy as np
 import time
-from datetime import datetime, timezone, timedelta
-from suncalc import get_position
-import geocoder
+from datetime import datetime
 import os
 import json
 import warnings
 import math
 from supervision import Detections
-import tensorflow as tf  # For TensorFlow Lite interpreter
+from ultralytics import YOLO 
 
 warnings.filterwarnings('ignore', category=UserWarning)
 
 # Environment settings to suppress unnecessary logs
-
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Suppress TensorFlow logs
-os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'  # Disable oneDNN optimizations
-# os.environ['CUDA_VISIBLE_DEVICES'] = '-1'  # Force CPU-only mode for TensorFlow Lite
 
 # Load configuration (if needed for other parts of the project)
 try:
     with open('appConfig.json') as config_file:
         config = json.load(config_file)
-except FileNotFoundError:
-    print("appConfig.json not found. Please make sure the file exists in the same directory as the script.")
-except json.JSONDecodeError:
-    print("Error decoding appConfig.json. Please make sure it's a valid JSON file.")
+except (FileNotFoundError, NameError):
+    print("Configuration file not found or JSON module not imported. Continuing without config.")
+
+# Class names - simplified for YOLO
+class_names = {0: "sun"}  # Primary class for sun tracking
+
+print("Class names loaded:")
+print(class_names)
 
 # Function to draw a central box on the frame
-def draw_central_box(frame, box_size=100):
+def draw_central_box(frame, box_size=50):
+    """Draws a central box on the frame."""
     height, width = frame.shape[:2]
     center_x, center_y = width // 2, height // 2
     top_left = (center_x - box_size // 2, center_y - box_size // 2)
     bottom_right = (center_x + box_size // 2, center_y + box_size // 2)
-    cv2.rectangle(frame, top_left, bottom_right, (0, 255, 0), 2)  # Green rectangle
-    return top_left, bottom_right
-
-# Function to load and initialize the TensorFlow Lite model
-def load_tflite_model(model_path):
-    """Load and initialize TFLite model with error handling"""
+    cv2.rectangle(frame, top_left, bottom_right, (0, 255, 0), 2)  # Green rectangle for crosshair
+    return center_x, center_y
+# Function to load YOLO model
+def load_yolo_model(model_path):
+    """Load YOLO model with error handling"""
     try:
-        interpreter = tf.lite.Interpreter(
-            model_path=model_path,
-            num_threads=4  # Optimize for multi-core CPUs
-        )
-        interpreter.allocate_tensors()
-        print(f"Model {model_path} loaded successfully")
-        return interpreter
+        if not os.path.exists(model_path):
+            raise FileNotFoundError(f"Model file not found: {model_path}")
+            
+        model = YOLO(model_path)
+        print(f"YOLO model loaded successfully from {model_path}")
+        return model
+
     except Exception as e:
-        print(f"Error loading model: {str(e)}")
+        print(f"YOLO Loading Error: {str(e)}")
         return None
 
-
-# Function to run inference on a frame using the TensorFlow Lite model
-def run_inference(interpreter, frame):
-    """Run inference with proper preprocessing for 640-trained model"""
+def calculate_distance(center_x, center_y, bbox):
+    """Calculates the distance of the detected object from the center."""
+    x1, y1, x2, y2 = bbox
+    object_center_x = (x1 + x2) / 2
+    object_center_y = (y1 + y2) / 2
+    distance_x = object_center_x - center_x
+    distance_y = object_center_y - center_y
+    return distance_x, distance_y
+# Convert YOLO results to Supervision Detections format
+def yolo_to_detections(yolo_result):
+    """Convert YOLO results to Supervision Detections format"""
     try:
-        input_details = interpreter.get_input_details()
-        output_details = interpreter.get_output_details()
-
-        # Get model input specifications
-        input_shape = input_details[0]['shape'][1:3]  # Expected (640, 640)
-        dtype = input_details[0]['dtype']
-
-        # Maintain aspect ratio with letterbox resize
-        height, width = frame.shape[:2]
-        scale = min(input_shape[0]/height, input_shape[1]/width)
-        new_size = (int(width*scale), int(height*scale))
-        
-        # Resize with antialiasing and preserve aspect ratio
-        resized = cv2.resize(frame, new_size, interpolation=cv2.INTER_LINEAR)
-        
-        # Create canvas with model's expected size
-        canvas = np.full((input_shape[0], input_shape[1], 3), 114, dtype=np.uint8)
-        canvas[0:new_size[1], 0:new_size[0]] = resized
-        
-        # Convert to float32 and normalize (same as training)
-        input_data = np.expand_dims(canvas, axis=0).astype(np.float32) / 255.0
-
-        # Set tensor and invoke
-        interpreter.set_tensor(input_details[0]['index'], input_data)
-        interpreter.invoke()
-
-        return interpreter.get_tensor(output_details[0]['index']).squeeze()
-    
-    except Exception as e:
-        print(f"Inference error: {e}")
-        return None
-
-
-# If you want labels, add class_id to your Detections
-def parse_detections(output_data):
-    """Parse detections with placeholder class_id"""
-    try:
-        xyxy = []
-        confidence = []
-        class_id = []
-        
-        for detection in output_data:
-            if detection[-1] > 0.5:
-                xyxy.append(detection[:4])
-                confidence.append(detection[-1])
-                class_id.append(0)  # Single class (sun) = class 0
+        if yolo_result is None or len(yolo_result.boxes) == 0:
+            return Detections.empty()
+            
+        # Extract boxes, confidence scores, and class IDs
+        boxes = yolo_result.boxes
+        xyxy = boxes.xyxy.cpu().numpy()
+        confidence = boxes.conf.cpu().numpy()
+        class_id = boxes.cls.cpu().numpy().astype(int)
         
         return Detections(
-            xyxy=np.array(xyxy),
-            confidence=np.array(confidence),
-            class_id=np.array(class_id)
+            xyxy=xyxy,
+            confidence=confidence,
+            class_id=class_id
         )
     except Exception as e:
-        print(f"Error parsing detections: {e}")
+        print(f"Detection conversion error: {e}")
         return Detections.empty()
 
+# Process single image with YOLO
+def test_image(image_path, model, class_names):
+    """Process single image with YOLO"""
+    try:
+        # Validate image path
+        if not os.path.isfile(image_path):
+            print(f"Error: Image file not found: {image_path}")
+            return
+            
+        frame = cv2.imread(image_path)
+        if frame is None:
+            print(f"Error loading image: {image_path}")
+            return
+            
+        # Create output directory
+        os.makedirs("results", exist_ok=True)
+        
+        # Process image with YOLO
+        results = model.predict(source=frame, conf=0.3, verbose=False)[0]
+        if results is None:
+            print("Inference returned no results")
+            cv2.imshow("Test Result (No detections)", frame)
+            cv2.waitKey(0)
+            return
 
-def main():
-    # Load your custom TensorFlow Lite model
-    model_path = "models/sun_tracker_v3/sun_tracker_v3_float16.tflite"
-    interpreter = load_tflite_model(model_path)
+        # Use YOLO's built-in visualization
+        annotated_frame = results.plot()
+        
+        # For compatibility with existing code, convert to supervision format
+        detections = yolo_to_detections(results)
 
-    if not interpreter:
-        print("Failed to load the TensorFlow Lite model. Exiting...")
-        return
+        print("Detection results:")
+        print(detections)
+        
+        # Save and display
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        output_path = f"results/test_output_{timestamp}.jpg"
+        cv2.imwrite(output_path, annotated_frame)
+        print(f"Saved to: {output_path}")
+        
+        cv2.imshow("Test Result", annotated_frame)
+        cv2.waitKey(0)
+        cv2.destroyAllWindows()
 
-    bounding_box_annotator = sv.BoxAnnotator(
-    color_lookup=sv.ColorLookup.INDEX  # Use detection index for coloring
-)
-    label_annotator = sv.LabelAnnotator()
+    except Exception as e:
+        print(f"Image processing failed: {e}")
 
-    g = geocoder.ip('me')
-    latitude, longitude = g.latlng
-
-    print(f"Current location: {g.city}, {g.state}, {g.country}")
-    print(f"Latitude: {latitude}, Longitude: {longitude}")
-
-    while True:
-        choice = input("Do you want to use webcam or video file? (webcam/video): ").lower()
-        if choice in ['webcam', 'video']:
-            break
-        print("Invalid choice. Please enter 'webcam' or 'video'.")
-
-    if choice == 'webcam':
-        cap = cv2.VideoCapture(0)
-    else:
-        while True:
-            video_path = input("Enter the path to your video file: ")
-            if os.path.exists(video_path):
-                cap = cv2.VideoCapture(video_path)
-                break
-            print("File not found. Please enter a valid path.")
-
+# Process video with YOLO
+def test_video(video_path, model, class_names):
+    """Process video file with YOLO"""
+    cap = cv2.VideoCapture(video_path)
+    
     if not cap.isOpened():
-        print("Error opening video source")
+        print(f"Error: Could not open video file {video_path}")
         return
-
+    
     # Get video properties
-    frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    fps = int(cap.get(cv2.CAP_PROP_FPS))
-
-    # Create VideoWriter object for saving output video
-    output_filename = f"sun_detection_output_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4"
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    out = cv2.VideoWriter(output_filename, fourcc, fps, (frame_width, frame_height))
-
-    detection_interval = 0.1  # Start with a short interval for testing purposes
-    last_detection_time = time.time()
-
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    
     while cap.isOpened():
         ret, frame = cap.read()
         if not ret:
             break
-
-        current_time = time.time()
-
-        if current_time - last_detection_time >= detection_interval:
-            try:
-                # Run inference on the current frame using the custom model
-                results = run_inference(interpreter, frame)
-
-                if results is not None:
-                    detections = parse_detections(results)
-
-                    if len(detections) > 0:
-                        print(f"Detections: {detections}")
-
-                        # Draw central box for visualization purposes
-                        top_left, bottom_right = draw_central_box(frame)
-
-                        # Annotate detections on the frame (if applicable)
-                        annotated_frame = bounding_box_annotator.annotate(
-                            scene=frame,
-                            detections=detections
-                        )
-                        # Add label annotations if needed
-                        class_names = {0: "sun", 1:"class_0"}
-                        annotated_frame = label_annotator.annotate(
-                            scene=annotated_frame,
-                            detections=detections,
-                            labels=[class_names[cid] for cid in detections.class_id]
-                        )
-
-
-                        out.write(annotated_frame)  # Write annotated frame to output video
-
-                        cv2.imshow("Sun Detection", annotated_frame)  # Display annotated frame in popup window
-
-                    else:
-                        print("No detections made.")
-                        out.write(frame)  # Write original frame when no detections are made
-
-                last_detection_time = current_time
-
-            except Exception as e:
-                print(f"Error during processing: {e}")
-                break
-
+        
+        # Draw central grid box
+        center_x, center_y = draw_central_box(frame)
+        
+        # Perform YOLO inference
+        results = model.predict(source=frame, conf=0.3)[0]
+        
+        if results.boxes:
+            for box in results.boxes.xyxy.cpu().numpy():
+                # Draw bounding box around detected sun
+                x1, y1, x2, y2 = map(int, box)
+                cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 0, 0), 2)  # Blue bounding box
+                
+                # Calculate and display distances from the center
+                distance_x, distance_y = calculate_distance(center_x, center_y, (x1, y1, x2, y2))
+                cv2.putText(frame,
+                            f"dx: {distance_x:.1f}, dy: {distance_y:.1f}",
+                            (x1, y1 - 10),
+                            cv2.FONT_HERSHEY_SIMPLEX,
+                            0.5,
+                            (0, 255, 255),
+                            1)
+        
+        # Display frame with annotations
+        cv2.imshow("Processing Video", frame)
+        
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
-
+    
     cap.release()
-    out.release()
     cv2.destroyAllWindows()
+
+# Process webcam with YOLO
+def run_webcam(model, class_names):
+    """Process webcam feed with YOLO"""
+    try:
+        # Open webcam
+        cap = cv2.VideoCapture(0)
+        if not cap.isOpened():
+            print("Error opening webcam")
+            return
+            
+        # Get video properties
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        
+        # Create output directory
+        os.makedirs("results", exist_ok=True)
+        
+        # Setup video writer
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        output_path = f"results/webcam_output_{timestamp}.mp4"
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        out = cv2.VideoWriter(output_path, fourcc, 30, (width, height))
+        
+        print("Processing webcam feed...")
+        print(f"Press 'q' to quit, 's' to save a snapshot")
+        
+        frame_count = 0
+        start_time = time.time()
+        
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                print("Error reading from webcam")
+                break
+                
+            try:
+                # Run inference with YOLO
+                results = model.predict(source=frame, conf=0.3, verbose=False)[0]
+                
+                if results is not None:
+                    # Use YOLO's built-in visualization
+                    annotated_frame = results.plot()
+                    
+                    # Add frame counter and time
+                    cv2.putText(
+                        annotated_frame,
+                        f"Frame: {frame_count}",
+                        (10, 30),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.7,
+                        (0, 255, 0),
+                        2
+                    )
+                    
+                    # Write and display
+                    out.write(annotated_frame)
+                    cv2.imshow("Webcam Processing", annotated_frame)
+                    
+                else:
+                    # On inference failure, show original frame
+                    cv2.putText(
+                        frame,
+                        "Inference failed",
+                        (10, 30),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        1,
+                        (0, 0, 255),
+                        2
+                    )
+                    out.write(frame)
+                    cv2.imshow("Webcam Processing", frame)
+            
+            except Exception as e:
+                print(f"Error processing frame {frame_count}: {e}")
+                out.write(frame)
+                cv2.imshow("Webcam Processing", frame)
+                
+            frame_count += 1
+            
+            # Check for keys
+            key = cv2.waitKey(1) & 0xFF
+            if key == ord('q'):
+                print("Webcam processing stopped by user")
+                break
+            elif key == ord('s'):
+                # Save snapshot
+                snapshot_path = f"results/snapshot_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
+                cv2.imwrite(snapshot_path, annotated_frame if 'annotated_frame' in locals() else frame)
+                print(f"Snapshot saved to: {snapshot_path}")
+                
+        # Cleanup and report
+        elapsed_time = time.time() - start_time
+        fps_processing = frame_count / elapsed_time if elapsed_time > 0 else 0
+        
+        print(f"Webcam processing complete!")
+        print(f"Processed {frame_count} frames in {elapsed_time:.2f} seconds")
+        print(f"Average processing speed: {fps_processing:.2f} FPS")
+        
+    except Exception as e:
+        print(f"Webcam processing failed: {e}")
+    finally:
+        if 'cap' in locals() and cap is not None:
+            cap.release()
+        if 'out' in locals() and out is not None:
+            out.release()
+        cv2.destroyAllWindows()
+
+def main():
+    try:
+        # Model selection with validation
+        model_path = input("Enter model path (or press Enter for default): ").strip()
+        if not model_path:
+            model_path = "/run/media/ash/OS/Users/Som/Desktop/AI-Solar-Panel/models/sun_tracker_v3/sun_tracker_v3_float32.tflite"  # Updated default path for YOLO model
+        
+        if not os.path.exists(model_path):
+            print(f"Error: Model file not found: {model_path}")
+            return
+            
+        # Load YOLO model
+        model = load_yolo_model(model_path)
+        if not model:
+            print("Failed to load the model. Exiting...")
+            return
+
+        # User interface with error handling
+        while True:
+            choice = input("Do you want to use webcam, video, or test an image? (webcam/video/image): ").lower()
+            if choice in ['webcam', 'video', 'image']:
+                break
+            print("Invalid choice. Please enter 'webcam', 'video', or 'image'.")
+            
+        # Process based on user choice
+        if choice == 'image':
+            while True:
+                image_path = input("Enter image file path: ")
+                if os.path.isfile(image_path):
+                    test_image(image_path, model, class_names)
+                    break
+                print("Invalid image path. Please try again.")
+                
+        elif choice == 'video':
+            video_path = input("Enter the path to your video file: ")
+            if os.path.exists(video_path):
+                test_video(video_path, model, class_names)
+            else:
+                print("Invalid video path.")
+                
+        elif choice == 'webcam':
+            run_webcam(model, class_names)
+                
+    except KeyboardInterrupt:
+        print("\nProgram interrupted by user")
+    except Exception as e:
+        print(f"Unexpected error: {e}")
 
 if __name__ == "__main__":
     main()
