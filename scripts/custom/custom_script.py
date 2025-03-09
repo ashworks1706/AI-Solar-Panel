@@ -2,29 +2,13 @@ import cv2
 import time
 from datetime import datetime
 import os
-import json
 import warnings
-import math
 from supervision import Detections
 from ultralytics import YOLO 
 
 warnings.filterwarnings('ignore', category=UserWarning)
 
-# Environment settings to suppress unnecessary logs
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Suppress TensorFlow logs
-
-# Load configuration (if needed for other parts of the project)
-try:
-    with open('appConfig.json') as config_file:
-        config = json.load(config_file)
-except (FileNotFoundError, NameError):
-    print("Configuration file not found or JSON module not imported. Continuing without config.")
-
-# Class names - simplified for YOLO
-class_names = {0: "sun"}  # Primary class for sun tracking
-
-print("Class names loaded:")
-print(class_names)
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  
 
 # Function to draw a central box on the frame
 def draw_central_box(frame, box_size=50):
@@ -35,7 +19,27 @@ def draw_central_box(frame, box_size=50):
     bottom_right = (center_x + box_size // 2, center_y + box_size // 2)
     cv2.rectangle(frame, top_left, bottom_right, (0, 255, 0), 2)  # Green rectangle for crosshair
     return center_x, center_y
-# Function to load YOLO model
+
+def draw_pixel_grid_with_labels(frame, step=50):
+    """Draws a pixel grid across the entire frame and labels intersections."""
+    height, width = frame.shape[:2]
+    
+    # Draw vertical and horizontal lines with labeled intersections
+    for x in range(0, width, step):
+        cv2.line(frame, (x, 0), (x, height), (0, 0, 255), 1)  # Red vertical lines
+        for y in range(0, height, step):
+            cv2.line(frame, (0, y), (width, y), (0, 0, 255), 1)  # Red horizontal lines
+            
+            # Label each intersection point
+            label = f"({x},{y})"
+            cv2.putText(frame,
+                        label,
+                        (x + 5, y - 5),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.3,
+                        (255, 255, 255),
+                        1)
+
 def load_yolo_model(model_path):
     """Load YOLO model with error handling"""
     try:
@@ -58,6 +62,7 @@ def calculate_distance(center_x, center_y, bbox):
     distance_x = object_center_x - center_x
     distance_y = object_center_y - center_y
     return distance_x, distance_y
+
 # Convert YOLO results to Supervision Detections format
 def yolo_to_detections(yolo_result):
     """Convert YOLO results to Supervision Detections format"""
@@ -81,103 +86,121 @@ def yolo_to_detections(yolo_result):
         return Detections.empty()
 
 # Process single image with YOLO
-def test_image(image_path, model, class_names):
-    """Process single image with YOLO"""
-    try:
-        # Validate image path
-        if not os.path.isfile(image_path):
-            print(f"Error: Image file not found: {image_path}")
-            return
-            
-        frame = cv2.imread(image_path)
-        if frame is None:
-            print(f"Error loading image: {image_path}")
-            return
-            
-        # Create output directory
-        os.makedirs("results", exist_ok=True)
-        
-        # Process image with YOLO
-        results = model.predict(source=frame, conf=0.3, verbose=False)[0]
-        if results is None:
-            print("Inference returned no results")
-            cv2.imshow("Test Result (No detections)", frame)
-            cv2.waitKey(0)
-            return
-
-        # Use YOLO's built-in visualization
-        annotated_frame = results.plot()
-        
-        # For compatibility with existing code, convert to supervision format
-        detections = yolo_to_detections(results)
-
-        print("Detection results:")
-        print(detections)
-        
-        # Save and display
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        output_path = f"results/test_output_{timestamp}.jpg"
-        cv2.imwrite(output_path, annotated_frame)
-        print(f"Saved to: {output_path}")
-        
-        cv2.imshow("Test Result", annotated_frame)
-        cv2.waitKey(0)
-        cv2.destroyAllWindows()
-
-    except Exception as e:
-        print(f"Image processing failed: {e}")
-
-# Process video with YOLO
-def test_video(video_path, model, class_names):
-    """Process video file with YOLO"""
-    cap = cv2.VideoCapture(video_path)
-    
-    if not cap.isOpened():
-        print(f"Error: Could not open video file {video_path}")
+def test_image(image_path, model):
+    """Process single image with YOLO and display pixel grid with measurements"""
+    # Validate image path
+    if not os.path.isfile(image_path):
+        print(f"Error: Image file not found: {image_path}")
         return
+        
+    frame = cv2.imread(image_path)
+    if frame is None:
+        print(f"Error loading image: {image_path}")
+        return
+        
+    # Create output directory
+    os.makedirs("results", exist_ok=True)
     
-    # Get video properties
-    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    # Draw pixel grid with labeled intersections on the frame
+    draw_pixel_grid_with_labels(frame)
     
-    while cap.isOpened():
-        ret, frame = cap.read()
-        if not ret:
-            break
-        
-        # Draw central grid box
-        center_x, center_y = draw_central_box(frame)
-        
-        # Perform YOLO inference
-        results = model.predict(source=frame, conf=0.3)[0]
-        
-        if results.boxes:
-            for box in results.boxes.xyxy.cpu().numpy():
-                # Draw bounding box around detected sun
+    # Draw central grid box
+    center_x, center_y = draw_central_box(frame)
+    
+    # Process image with YOLO
+    results = model.predict(source=frame, conf=0.3, verbose=False)[0]
+    if results is None:
+        print("Inference returned no results")
+        cv2.imshow("Test Result (No detections)", frame)
+        cv2.waitKey(0)
+        return
+
+    if results.boxes:
+        for box, cls_id in zip(results.boxes.xyxy.cpu().numpy(), results.boxes.cls.cpu().numpy().astype(int)):
+            # Process only class_0 (sun)
+            if cls_id == 0:
                 x1, y1, x2, y2 = map(int, box)
                 cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 0, 0), 2)  # Blue bounding box
-                
+
                 # Calculate and display distances from the center
                 distance_x, distance_y = calculate_distance(center_x, center_y, (x1, y1, x2, y2))
                 cv2.putText(frame,
                             f"dx: {distance_x:.1f}, dy: {distance_y:.1f}",
-                            (x1, y1 - 10),
+                            (x1 + 5, y1 - 10),
                             cv2.FONT_HERSHEY_SIMPLEX,
                             0.5,
-                            (0, 255, 255),
+                            (255, 255, 0),
                             1)
+    
+    # For compatibility with existing code, convert to supervision format
+    detections = yolo_to_detections(results)
+    print("Detection results:")
+    print(detections)
+    
+    # Save and display
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    output_path = f"results/test_output_{timestamp}.jpg"
+    cv2.imwrite(output_path, frame)  # Save the frame with grid and measurements
+    print(f"Saved to: {output_path}")
+    
+    cv2.imshow("Test Result", frame)
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
         
-        # Display frame with annotations
+# Process video with YOLO
+def test_video(video_path, model):
+    """Processes video and overlays grid with detection results."""
+    cap = cv2.VideoCapture(video_path)
+
+    if not cap.isOpened():
+        print(f"Error: Could not open video file {video_path}")
+        return
+
+    # Get video properties
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+    while cap.isOpened():
+        ret, frame = cap.read()
+        if not ret:
+            break
+
+        # Draw pixel grid with labeled intersections on the frame
+        draw_pixel_grid_with_labels(frame)
+
+        # Draw central grid box
+        center_x, center_y = draw_central_box(frame)
+
+        # Perform YOLO inference
+        results = model.predict(source=frame, conf=0.3)[0]
+
+        if results.boxes:
+            for box, cls_id in zip(results.boxes.xyxy.cpu().numpy(), results.boxes.cls.cpu().numpy().astype(int)):
+                # Process only class_0 (sun)
+                if cls_id == 0:
+                    x1, y1, x2, y2 = map(int, box)
+                    cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 0, 0), 2)  # Blue bounding box
+
+                    # Calculate and display distances from the center
+                    distance_x, distance_y = calculate_distance(center_x, center_y, (x1, y1, x2, y2))
+                    cv2.putText(frame,
+                                f"dx: {distance_x:.1f}, dy: {distance_y:.1f}",
+                                (x1 + 5, y1 - 10),
+                                cv2.FONT_HERSHEY_SIMPLEX,
+                                0.5,
+                                (255, 255, 0),
+                                1)
+
+        # Display frame with annotations and grid
         cv2.imshow("Processing Video", frame)
-        
+
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
-    
+
     cap.release()
     cv2.destroyAllWindows()
 
-# Process webcam with YOLO
-def run_webcam(model, class_names):
+def run_webcam(model):
     """Process webcam feed with YOLO"""
     try:
         # Open webcam
@@ -312,19 +335,19 @@ def main():
             while True:
                 image_path = input("Enter image file path: ")
                 if os.path.isfile(image_path):
-                    test_image(image_path, model, class_names)
+                    test_image(image_path, model)
                     break
                 print("Invalid image path. Please try again.")
                 
         elif choice == 'video':
             video_path = input("Enter the path to your video file: ")
             if os.path.exists(video_path):
-                test_video(video_path, model, class_names)
+                test_video(video_path, model)
             else:
                 print("Invalid video path.")
                 
         elif choice == 'webcam':
-            run_webcam(model, class_names)
+            run_webcam(model)
                 
     except KeyboardInterrupt:
         print("\nProgram interrupted by user")
