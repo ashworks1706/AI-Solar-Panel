@@ -1,0 +1,5 @@
+opencv-python
+ultralytics
+supervision
+dotenv
+firebase_admin
