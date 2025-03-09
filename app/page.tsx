@@ -1,16 +1,11 @@
 'use client'
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Navbar,
   Button,
   Card,
   CardBody,
   CardHeader,
-  CardFooter,
-  Dropdown,
-  DropdownTrigger,
-  DropdownMenu,
-  DropdownItem,
   Spinner,
   Tooltip,
   Progress,
@@ -31,13 +26,120 @@ import {
   ArrowPathIcon,
   AdjustmentsHorizontalIcon,
   ChartBarIcon,
-  ExclamationCircleIcon,
-  ChevronDownIcon,
 } from "@heroicons/react/24/outline";
 
 import { db } from "../firebase/config";
 
 import { collection, getDocs, query, orderBy, limit } from "firebase/firestore";
+
+
+const SunPositionVisualizer = ({ detections }: { detections: any[] }) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  
+  useEffect(() => {
+    if (!canvasRef.current || !detections || detections.length === 0) return;
+    
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      console.error("Could not get 2D context");
+      return;
+    }
+    const width = canvas.width;
+    const height = canvas.height;
+    
+    // Clear canvas
+    ctx.clearRect(0, 0, width, height);
+    
+    // Draw center reference
+    ctx.strokeStyle = '#00FF00';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.rect(width/2-25, height/2-25, 50, 50);
+    ctx.stroke();
+    
+    // Draw crosshairs
+    ctx.strokeStyle = '#AAAAAA';
+    ctx.beginPath();
+    ctx.moveTo(0, height/2);
+    ctx.lineTo(width, height/2);
+    ctx.moveTo(width/2, 0);
+    ctx.lineTo(width/2, height);
+    ctx.stroke();
+    
+    // Draw sun position
+    const detection = detections[0];
+    if (detection) {
+      const centerX = width/2 + detection.distance_x * 0.5; // Scale for visualization
+      const centerY = height/2 + detection.distance_y * 0.5;
+      
+      // Draw sun
+      ctx.fillStyle = '#FFCC00';
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, 20, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Draw vector line from center
+      ctx.strokeStyle = '#FF0000';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(width/2, height/2);
+      ctx.lineTo(centerX, centerY);
+      ctx.stroke();
+      
+      // Show offset values
+      ctx.fillStyle = '#FFFFFF';
+      ctx.font = '12px Arial';
+      ctx.fillText(`X: ${detection.distance_x.toFixed(1)}, Y: ${detection.distance_y.toFixed(1)}`, 10, 20);
+    }
+  }, [detections]);
+  
+  return (
+    <canvas 
+      ref={canvasRef} 
+      width={300} 
+      height={300} 
+      className="border border-gray-700 bg-gray-900 rounded-md"
+    />
+  );
+};
+
+type WeatherData = {
+  sunrise: number;
+  sunset: number;
+};
+
+const DayNightIndicator = ({ weather }: { weather: WeatherData }) => {
+  if (!weather || !weather.sunrise || !weather.sunset) return null;
+  
+  const current = Date.now() / 1000;
+  const sunrise = weather.sunrise;
+  const sunset = weather.sunset;
+  const dayLength = sunset - sunrise;
+  const progress = Math.min(Math.max((current - sunrise) / dayLength, 0), 1) * 100;
+  const isDaytime = current > sunrise && current < sunset;
+  
+  return (
+    <div className="mt-4">
+      <div className="flex justify-between text-xs mb-1">
+        <span>Sunrise: {new Date(sunrise * 1000).toLocaleTimeString()}</span>
+        <span>Sunset: {new Date(sunset * 1000).toLocaleTimeString()}</span>
+      </div>
+      <div className="h-4 bg-gray-700 rounded-full overflow-hidden">
+        <div 
+          className={`h-full ${isDaytime ? "bg-gradient-to-r from-yellow-400 to-orange-500" : "bg-gradient-to-r from-indigo-900 to-purple-900"}`}
+          style={{ width: `${progress}%` }}
+        ></div>
+      </div>
+      <div className="text-center mt-1 text-xs">
+        {isDaytime ? "Daytime" : "Nighttime"} - {isDaytime ? 
+          `${Math.round((sunset - current) / 60)} minutes until sunset` : 
+          `${Math.round((sunrise + 86400 - current) / 60)} minutes until sunrise`}
+      </div>
+    </div>
+  );
+};
+
 
 // API base URL - replace with your Flask server address
 const API_BASE_URL = "http://localhost:5000";
@@ -74,27 +176,33 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState("status");
   const [customInterval, setCustomInterval] = useState(60);
 
+  const [statusLoading, setStatusLoading] = useState(false);
+  const [statusError, setStatusError] = useState<string | null>(null);
+  
   // Fetch system status
-  useEffect(() => {
-    const fetchStatus = async () => {
-      try {
-        const response = await fetch(`${API_BASE_URL}/status`);
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        const data = await response.json();
-        setSystemStatus(data);
-      } catch (error) {
-        console.error("Error fetching system status:", error);
-      }
-    };
-  
-    // Fetch status every 5 seconds
-    fetchStatus();
-    const intervalId = setInterval(fetchStatus, 5000);
-  
-    return () => clearInterval(intervalId);
-  }, []);
+// Enhanced data fetching with error handling and loading states
+useEffect(() => {
+  const fetchStatus = async () => {
+    try {
+      setStatusLoading(true);
+      const response = await fetch(`${API_BASE_URL}/status`);
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+      const data = await response.json();
+      setSystemStatus(data);
+      setStatusError(null);
+    } catch (error) {
+      console.error("Error fetching system status:", error);
+      setStatusError("Failed to connect to solar panel system");
+    } finally {
+      setStatusLoading(false);
+    }
+  };
+
+  fetchStatus();
+  const intervalId = setInterval(fetchStatus, 3000); // More frequent updates
+  return () => clearInterval(intervalId);
+}, []);
+
   
   // Fetch model logs from Firebase
   useEffect(() => {
@@ -150,7 +258,7 @@ export default function Home() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ action }),
+        body: JSON.stringify({ action:action }),
       });
   
       if (!response.ok) {
@@ -225,7 +333,8 @@ export default function Home() {
                 }`}
               ></div>
             </Tooltip>
-            <p className="text-sm">{new Date().toLocaleString()}</p>
+            
+            <p suppressHydrationWarning={true} className="text-sm">{new Date().toLocaleString()}</p>
           </div>
         </div>
       </Navbar>
@@ -334,221 +443,129 @@ export default function Home() {
             <>
               {/* Status Dashboard */}
               {activeTab === "status" && (
-                <div>
-                  <h1 className="text-2xl font-bold mb-6">System Dashboard</h1>
-
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                    <Card>
-                      <CardBody>
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <p className="text-sm text-gray-500">
-                              Camera Status
-                            </p>
-                            <p className="text-2xl font-bold">
-                              {systemStatus.camera_active
-                                ? "Active"
-                                : "Inactive"}
-                            </p>
-                          </div>
-                          <div
-                            className={`rounded-full p-3 ${
-                              systemStatus.camera_active
-                                ? "bg-green-100"
-                                : "bg-red-100"
-                            }`}
-                          >
-                            <CameraIcon
-                              className={`h-6 w-6 ${
-                                systemStatus.camera_active
-                                  ? "text-green-600"
-                                  : "text-red-600"
-                              }`}
-                            />
-                          </div>
-                        </div>
-                      </CardBody>
-                    </Card>
-
-                    <Card>
-                      <CardBody>
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <p className="text-sm text-gray-500">
-                              Current Interval
-                            </p>
-                            <p className="text-2xl font-bold">
-                              {systemStatus.interval_time}s
-                            </p>
-                          </div>
-                          <div className="rounded-full p-3 bg-blue-100">
-                            <ArrowPathIcon className="h-6 w-6 text-blue-600" />
-                          </div>
-                        </div>
-                      </CardBody>
-                    </Card>
-
-                    <Card>
-                      <CardBody>
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <p className="text-sm text-gray-500">Weather</p>
-                            <p className="text-2xl font-bold">
-                              {systemStatus.weather_data?.weather_condition ||
-                                "Unknown"}
-                            </p>
-                          </div>
-                          <div className="rounded-full p-3 bg-yellow-100">
-                            <CloudIcon className="h-6 w-6 text-yellow-600" />
-                          </div>
-                        </div>
-                      </CardBody>
-                    </Card>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <Card>
-                      <CardHeader className="pb-0 pt-4 px-4 flex-col items-start">
-                        <h4 className="font-bold text-large">
-                          Recent Detections
-                        </h4>
-                        <p className="text-tiny text-default-500">
-                          Last 5 sun detections
-                        </p>
-                      </CardHeader>
-                      <CardBody>
-                        {modelLogs.length > 0 ? (
-                          <Table aria-label="Recent detections">
-                            <TableHeader>
-                              <TableColumn>TIME</TableColumn>
-                              <TableColumn>DETECTIONS</TableColumn>
-                              <TableColumn>OFFSET</TableColumn>
-                            </TableHeader>
-                            <TableBody>
-                              {modelLogs.map((log: any) => (
-                                <TableRow key={log.id}>
-                                  <TableCell>
-                                    {formatTimestamp(log.timestamp)}
-                                  </TableCell>
-                                  <TableCell>
-                                    {log.model_details?.detections?.length || 0}
-                                  </TableCell>
-                                  <TableCell>
-                                    {log.model_details?.detections?.[0] ? (
-                                      <span>
-                                        X:{" "}
-                                        {log.model_details.detections[0].distance_x.toFixed(
-                                          1
-                                        )}
-                                        , Y:{" "}
-                                        {log.model_details.detections[0].distance_y.toFixed(
-                                          1
-                                        )}
-                                      </span>
-                                    ) : (
-                                      "None"
-                                    )}
-                                  </TableCell>
-                                </TableRow>
-                              ))}
-                            </TableBody>
-                          </Table>
-                        ) : (
-                          <p className="text-center py-4 text-gray-500">
-                            No detection logs found
-                          </p>
-                        )}
-                      </CardBody>
-                    </Card>
-
-                    <Card>
-                      <CardHeader className="pb-0 pt-4 px-4 flex-col items-start">
-                        <h4 className="font-bold text-large">
-                          System Controls
-                        </h4>
-                        <p className="text-tiny text-default-500">
-                          Manage camera and detection
-                        </p>
-                      </CardHeader>
-                      <CardBody>
-                        <div className="space-y-4">
-                          <div className="flex justify-between items-center">
-                            <span>Camera Status</span>
-                            <Switch
-                              isSelected={systemStatus.camera_active}
-                              onValueChange={toggleCamera}
-                              color="success"
-                            />
-                          </div>
-
-                          <div className="space-y-2">
-                            <p className="text-sm">Change Interval</p>
-                            <div className="flex gap-2">
-                              <Button
-                                size="sm"
-                                onClick={() => changeInterval(60)}
-                              >
-                                1 min
-                              </Button>
-                              <Button
-                                size="sm"
-                                onClick={() => changeInterval(180)}
-                              >
-                                3 min
-                              </Button>
-                              <Button
-                                size="sm"
-                                onClick={() => changeInterval(300)}
-                              >
-                                5 min
-                              </Button>
-                              <input
-                                type="number"
-                                className="w-20 p-2 border rounded"
-                                value={customInterval}
-                                onChange={(e) =>
-                                  setCustomInterval(parseInt(e.target.value))
-                                }
-                                min="10"
-                                max="3600"
-                              />
-                              <Button
-                                size="sm"
-                                onClick={() => changeInterval(customInterval)}
-                              >
-                                Set
-                              </Button>
-                            </div>
-                          </div>
-
-                          <div className="pt-2">
-                            <Button
-                              color={
-                                systemStatus.camera_active
-                                  ? "danger"
-                                  : "success"
-                              }
-                              startContent={
-                                systemStatus.camera_active ? (
-                                  <PauseCircleIcon className="h-5 w-5" />
-                                ) : (
-                                  <PlayCircleIcon className="h-5 w-5" />
-                                )
-                              }
-                              className="w-full"
-                              onClick={toggleCamera}
-                            >
-                              {systemStatus.camera_active
-                                ? "Stop Camera"
-                                : "Start Camera"}
-                            </Button>
-                          </div>
-                        </div>
-                      </CardBody>
-                    </Card>
-                  </div>
+  <div>
+    <h1 className="text-2xl font-bold mb-6">System Dashboard</h1>
+    
+    
+    
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+      <Card>
+        <CardBody>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-500">Camera Status</p>
+              <p className="text-2xl font-bold">
+                {systemStatus.camera_active ? "Active" : "Inactive"}
+              </p>
+            </div>
+            <div className={`rounded-full p-3 ${systemStatus.camera_active ? "bg-green-100" : "bg-red-100"}`}>
+              <CameraIcon className={`h-6 w-6 ${systemStatus.camera_active ? "text-green-600" : "text-red-600"}`} />
+            </div>
+          </div>
+        </CardBody>
+      </Card>
+      
+      <Card>
+        <CardBody>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-500">Current Interval</p>
+              <p className="text-2xl font-bold">{systemStatus.interval_time}s</p>
+              <p className="text-xs text-gray-500">
+                Next: {formatTimestamp(systemStatus.next_interval_time)}
+              </p>
+            </div>
+            <div className="rounded-full p-3 bg-blue-100">
+              <ArrowPathIcon className="h-6 w-6 text-blue-600" />
+            </div>
+          </div>
+        </CardBody>
+      </Card>
+      
+      <Card>
+        <CardBody>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-500">Weather</p>
+              <p className="text-2xl font-bold">
+                {systemStatus.weather_data?.weather_condition || "Unknown"}
+              </p>
+              <p className="text-xs text-gray-500">
+                {systemStatus.weather_data?.clouds || 0}% cloud cover
+              </p>
+            </div>
+            <div className="rounded-full p-3 bg-yellow-100">
+              <CloudIcon className="h-6 w-6 text-yellow-600" />
+            </div>
+          </div>
+          {systemStatus.weather_data && (
+            <DayNightIndicator weather={systemStatus.weather_data} />
+          )}
+        </CardBody>
+      </Card>
+    </div>
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+      <Card>
+        <CardHeader className="pb-0 pt-4 px-4 flex-col items-start">
+          <h4 className="font-bold text-large">Sun Position Tracker</h4>
+          <p className="text-tiny text-default-500">Real-time visualization</p>
+        </CardHeader>
+        <CardBody className="overflow-hidden flex justify-center">
+          <SunPositionVisualizer detections={
+            modelLogs[0]?.model_details?.detections || []
+          } />
+        </CardBody>
+      </Card>
+      
+      <Card>
+        <CardHeader className="pb-0 pt-4 px-4 flex-col items-start">
+          <h4 className="font-bold text-large">System Metrics</h4>
+          <p className="text-tiny text-default-500">Hardware performance</p>
+        </CardHeader>
+        <CardBody>
+          {modelLogs[0]?.raspberry_details ? (
+            <div className="space-y-4">
+              <div>
+                <div className="flex justify-between mb-1">
+                  <span>CPU Usage</span>
+                  <span>{modelLogs[0].raspberry_details.cpu_percent}%</span>
                 </div>
-              )}
+                <Progress 
+                  color={modelLogs[0].raspberry_details.cpu_percent > 80 ? "danger" : "primary"} 
+                  value={modelLogs[0].raspberry_details.cpu_percent} 
+                />
+              </div>
+              
+              <div>
+                <div className="flex justify-between mb-1">
+                  <span>Memory Usage</span>
+                  <span>{modelLogs[0].raspberry_details.memory_percent}%</span>
+                </div>
+                <Progress 
+                  color={modelLogs[0].raspberry_details.memory_percent > 80 ? "danger" : "primary"} 
+                  value={modelLogs[0].raspberry_details.memory_percent} 
+                />
+              </div>
+              
+              <div>
+                <div className="flex justify-between mb-1">
+                  <span>Disk Usage</span>
+                  <span>{modelLogs[0].raspberry_details.disk_percent}%</span>
+                </div>
+                <Progress 
+                  color={modelLogs[0].raspberry_details.disk_percent > 80 ? "danger" : "primary"} 
+                  value={modelLogs[0].raspberry_details.disk_percent} 
+                />
+              </div>
+            </div>
+          ) : (
+            <p className="text-center py-4 text-gray-500">No system metrics available</p>
+          )}
+        </CardBody>
+      </Card>
+    </div>
+  </div>
+)}
 
               {/* Model Logs */}
               {activeTab === "modelLogs" && (
@@ -847,8 +864,8 @@ export default function Home() {
               )}
             </>
           )}
+          </div>
         </div>
       </div>
-    </div>
-  );
+    );
 }

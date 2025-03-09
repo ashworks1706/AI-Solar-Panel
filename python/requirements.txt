@@ -5,3 +5,4 @@ dotenv
 firebase_admin
 Flask
 tensorflow
+flask-cors

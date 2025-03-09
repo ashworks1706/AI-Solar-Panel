@@ -7,9 +7,9 @@ import warnings
 import numpy as np
 import requests
 import threading
-import json
 from supervision import Detections
 from ultralytics import YOLO
+from flask_cors import CORS
 import firebase_admin
 from firebase_admin import credentials, firestore
 import psutil
@@ -19,7 +19,7 @@ warnings.filterwarnings('ignore', category=UserWarning)
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 app = Flask(__name__)
-
+CORS(app)  # This enables CORS for all routes
 # Global variables
 camera_active = False
 camera_thread = None
@@ -263,8 +263,6 @@ def process_image_with_model(image, return_annotated=False):
         print(f"Error processing image: {e}")
         return {"error": str(e)}, None, None
 
-# Remove the entire get_model_response() endpoint function
-
 # Modify the camera function to run directly instead of in a thread
 def camera_function():
     """Function to run the camera and model detection"""
@@ -494,29 +492,6 @@ def post_program_details_to_firebase(weather_response, interval_formula, next_in
     except Exception as e:
         print(f"Error logging program details to Firebase: {e}")
         return False
-
-@app.route('/status', methods=['GET'])
-def get_status():
-    """Endpoint to get the current status of the system"""
-    try:
-        status = {
-            "camera_active": camera_active,
-            "interval_time": interval_time,
-            "next_interval_time": next_interval_time,
-            "last_detection_time": last_detection_time,
-            "model_loaded": model is not None,
-            "weather_data": weather_data,
-            "timestamp": datetime.now().isoformat()
-        }
-        
-        return jsonify(status)
-        
-    except Exception as e:
-        return jsonify({
-            "status": "error",
-            "message": str(e),
-            "timestamp": datetime.now().isoformat()
-        }), 500
 
 # Initialize the application
 def initialize():
