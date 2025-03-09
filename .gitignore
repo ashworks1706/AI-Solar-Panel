@@ -1,7 +1,9 @@
 /venv
+/.venv
 *.pt
 appConfig.json
 /ml_env
 /datasets
 /models/sun_tracker_v3/sun_tracker_v3_float32.tflite
 *.onnx
+.vscode
