@@ -6,6 +6,13 @@ An innovative self-adjusting solar panel system that maximizes energy absorption
 
 This repository contains the deep learning component of our AI-powered solar panel tracking system. The project aims to optimize solar energy capture by accurately tracking the sun's position in real-time, using a lightweight deep learning model running on a microcontroller.
 
+![image](https://github.com/user-attachments/assets/eea5721c-b19e-4e94-939d-d3f80633a671)
+
+![image](https://github.com/user-attachments/assets/fc0dd9a4-0482-4a62-8def-da6433f52e5f)
+
+![image](https://github.com/user-attachments/assets/cb524227-639e-42ce-a87a-55f1a9b45cd9)
+
+
 ## Key Features
 
 - **Sun Position Detection**: Utilizes a lightweight deep learning model for real-time sun tracking in various weather conditions.
