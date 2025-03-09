@@ -440,6 +440,141 @@ def change_interval():
             "timestamp": datetime.now().isoformat()
         }), 500
 
+# Add a global variable for test mode
+test_mode_active = False
+test_mode_thread = None
+
+@app.route('/test_model', methods=['POST'])
+def test_model():
+    """Endpoint to toggle continuous test mode for the model"""
+    global test_mode_active, test_mode_thread
+    
+    try:
+        data = request.json
+        active = data.get('active', False)
+        
+        # If requesting to activate test mode
+        if active and not test_mode_active:
+            # Check if model is loaded
+            if model is None:
+                return jsonify({
+                    "status": "error",
+                    "message": "Model not loaded",
+                    "timestamp": datetime.now().isoformat()
+                }), 500
+            
+            # Start test mode in a separate thread
+            test_mode_active = True
+            test_mode_thread = threading.Thread(target=test_mode_function)
+            test_mode_thread.daemon = True
+            test_mode_thread.start()
+            
+            return jsonify({
+                "status": "success",
+                "message": "Test mode started",
+                "test_mode_active": test_mode_active,
+                "timestamp": datetime.now().isoformat()
+            })
+            
+        # If requesting to deactivate test mode
+        elif not active and test_mode_active:
+            # Stop test mode
+            test_mode_active = False
+            if test_mode_thread:
+                test_mode_thread.join(timeout=5.0)
+            
+            return jsonify({
+                "status": "success",
+                "message": "Test mode stopped",
+                "test_mode_active": test_mode_active,
+                "timestamp": datetime.now().isoformat()
+            })
+            
+        # If already in the requested state
+        else:
+            return jsonify({
+                "status": "info",
+                "message": f"Test mode already {'active' if test_mode_active else 'inactive'}",
+                "test_mode_active": test_mode_active,
+                "timestamp": datetime.now().isoformat()
+            })
+            
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": str(e),
+            "timestamp": datetime.now().isoformat()
+        }), 500
+
+def test_mode_function():
+    """Function to run continuous testing of the model"""
+    global test_mode_active
+    
+    try:
+        # Initialize camera
+        test_cap = cv2.VideoCapture(0)
+        if not test_cap.isOpened():
+            print("Error: Could not open camera for test mode")
+            test_mode_active = False
+            return
+        
+        print("Test mode started, beginning continuous testing")
+        
+        frame_count = 0
+        
+        while test_mode_active:
+            # Capture frame
+            ret, frame = test_cap.read()
+            if not ret:
+                print("Error: Failed to capture frame in test mode")
+                time.sleep(1)
+                continue
+            
+            # Process the frame
+            frame_result, _, output_path = process_image_with_model(frame, return_annotated=True)
+            frame_count += 1
+            
+            # Log to Firebase
+            if "error" not in frame_result:
+                system_info = {
+                    "cpu_percent": psutil.cpu_percent(),
+                    "memory_percent": psutil.virtual_memory().percent,
+                    "disk_percent": psutil.disk_usage('/').percent
+                }
+                
+                post_current_status_to_firebase(
+                    model_details={
+                        "detections": frame_result["detections"],
+                        "timestamp": frame_result["timestamp"],
+                        "test_mode": True,
+                        "test_frame": frame_count
+                    },
+                    raspberry_details=system_info
+                )
+            
+            # Get weather data and log interval calculation for testing
+            if frame_count % 10 == 0:  # Update weather every 10 frames
+                get_weather_data()
+                interval = calculate_next_interval()
+                
+                # Log special test mode message
+                post_program_details_to_firebase(
+                    weather_response=weather_data,
+                    interval_formula=f"Test mode active - frame {frame_count}",
+                    next_interval_time=datetime.now().timestamp() + interval
+                )
+            
+            # Short delay between frames to avoid overwhelming the system
+            time.sleep(0.5)
+            
+    except Exception as e:
+        print(f"Test mode error: {e}")
+    finally:
+        if test_cap is not None and test_cap.isOpened():
+            test_cap.release()
+        test_mode_active = False
+        print("Test mode stopped")
+
 
 # Remove these API endpoints and convert to internal functions
 def post_current_status_to_firebase(model_details, raspberry_details=None):

@@ -202,6 +202,31 @@ useEffect(() => {
   const intervalId = setInterval(fetchStatus, 3000); // More frequent updates
   return () => clearInterval(intervalId);
 }, []);
+// Add this state
+const [testModeActive, setTestModeActive] = useState(false);
+
+// Add this function to toggle test mode
+const toggleTestMode = async () => {
+  try {
+    const action = testModeActive ? "stop" : "start";
+    const response = await fetch(`${API_BASE_URL}/test_model`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ active: !testModeActive }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    // Update local state
+    setTestModeActive(!testModeActive);
+  } catch (error) {
+    console.error("Error toggling test mode:", error);
+  }
+};
 
   
   // Fetch model logs from Firebase
@@ -859,6 +884,41 @@ useEffect(() => {
                         </div>
                       </CardBody>
                     </Card>
+
+                    <Card className="mt-4">
+  <CardHeader className="pb-0 pt-4 px-4 flex-col items-start">
+    <h4 className="font-bold text-large">Test Mode</h4>
+    <p className="text-tiny text-default-500">Run continuous model testing</p>
+  </CardHeader>
+  <CardBody className="py-5">
+    <div className="space-y-4">
+      <div className="flex justify-between items-center">
+        <span>Test Mode Status</span>
+        <Switch
+          isSelected={testModeActive}
+          onValueChange={toggleTestMode}
+          color="warning"
+        />
+      </div>
+      
+      <Button
+        color={testModeActive ? "danger" : "warning"}
+        startContent={testModeActive ? <PauseCircleIcon className="h-5 w-5" /> : <PlayCircleIcon className="h-5 w-5" />}
+        className="w-full"
+        onClick={toggleTestMode}
+      >
+        {testModeActive ? "Stop Test Mode" : "Start Test Mode"}
+      </Button>
+      
+      <p className="text-sm mt-2">
+        {testModeActive 
+          ? "Test mode is running. System is continuously capturing and processing frames." 
+          : "Test mode is inactive. Click to start continuous testing."}
+      </p>
+    </div>
+  </CardBody>
+</Card>
+
                   </div>
                 </div>
               )}
