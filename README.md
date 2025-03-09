@@ -35,8 +35,6 @@ def calculate_distance(center_x, center_y, bbox):
 
 ![image](https://github.com/user-attachments/assets/cb524227-639e-42ce-a87a-55f1a9b45cd9)
 
-
-
 ![image](https://github.com/user-attachments/assets/a70c042f-330c-4c49-9386-214e1cefd40a)
 
 ### Weather-Adaptive Scheduling
@@ -96,9 +94,6 @@ The Next.js dashboard provides comprehensive system monitoring and control:
 
 ![image](https://github.com/user-attachments/assets/010c34b7-d4cd-489e-84f1-952a0bc1208f)
 
-![image](https://github.com/user-attachments/assets/5658303b-1b3e-42e5-9a68-147aa8356478)
-
-
 ![image](https://github.com/user-attachments/assets/251e4fba-2b79-47d3-964e-e6c5e91af843)
 
 ![image](https://github.com/user-attachments/assets/908d1270-42eb-47bd-b705-28c26f4ddce1)
@@ -112,6 +107,11 @@ The system uses Firebase Firestore for comprehensive data logging:
 - **ModelLog Collection**: Stores detection results, system performance metrics, and timestamps
 - **ProgramLog Collection**: Records weather data, interval calculations, and system events
 - **Test Mode Data**: Captures continuous testing data for system optimization
+
+![image](https://github.com/user-attachments/assets/05c52df8-c99c-41b3-9a68-27242e442ef7)
+
+![image](https://github.com/user-attachments/assets/555c8b8d-73b9-46d2-9646-961c25d6255e)
+
 
 ## Technologies Used
 
