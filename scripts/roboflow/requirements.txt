@@ -1,5 +1,0 @@
-roboflow
-inference
-suncalc
-geocoder
-opencv-python

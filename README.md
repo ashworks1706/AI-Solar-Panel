@@ -12,7 +12,6 @@ This repository contains the deep learning component of our AI-powered solar pan
 
 ![image](https://github.com/user-attachments/assets/cb524227-639e-42ce-a87a-55f1a9b45cd9)
 
-
 ## Key Features
 
 - **Sun Position Detection**: Utilizes a lightweight deep learning model for real-time sun tracking in various weather conditions.
@@ -87,45 +86,53 @@ This repository contains the deep learning component of our AI-powered solar pan
 
 - **Model**: Lightweight YOLOv8 model for sun detection
 - **Datasets Used for Training**:
-   1. **Sun Tracking Photovoltaic Panel Dataset**
-     - Workspace: yassine-pzpt7
-     - Project: sun-tracking-photovoltaic-panel
-     - Version: 2
 
-   2. **Sun Dataset**
-     - Workspace: 1009727588-qq-com
-     - Project: sun-nxvfz
-     - Version: 2
+  1. **Sun Tracking Photovoltaic Panel Dataset**
 
-   3. **Sun Tracking Dataset**
-     - Workspace: rik-tjduw
-     - Project: sun-tracking-555mn
-     - Version: 4
+  - Workspace: yassine-pzpt7
+  - Project: sun-tracking-photovoltaic-panel
+  - Version: 2
 
-   4. **Solar Dataset**
-     - Workspace: stardetect
-     - Project: solar-re1fe
-     - Version: 1
+  2. **Sun Dataset**
 
-   5. **Sun Detection Dataset**
-     - Workspace: fruitdetection-ulcz9
-     - Project: sun_detection-hl04q
-     - Version: 1
+  - Workspace: 1009727588-qq-com
+  - Project: sun-nxvfz
+  - Version: 2
 
-   6. **Custom Dataset** 
-      - 400 Images from google of clear sky and sun
-      - Custom labelling using labellmg
+  3. **Sun Tracking Dataset**
 
+  - Workspace: rik-tjduw
+  - Project: sun-tracking-555mn
+  - Version: 4
+
+  4. **Solar Dataset**
+
+  - Workspace: stardetect
+  - Project: solar-re1fe
+  - Version: 1
+
+  5. **Sun Detection Dataset**
+
+  - Workspace: fruitdetection-ulcz9
+  - Project: sun_detection-hl04q
+  - Version: 1
+
+  6. **Custom Dataset**
+     - 400 Images from google of clear sky and sun
+     - Custom labelling using labellmg
 - **Server Framework**: Flask for API endpoints and system management
 - **Hardware**:
+
   - Raspberry Pi for model hosting and server
   - Teensy or Arduino for motor control
 - **Additional Sensors**: Inertial Measurement Unit (IMU) for current position and orientation
 - **Programming Languages**:
+
   - Python for Flask server and deep learning
   - Next.JS for web dashboard and firebase
   - C++ for firmware and motor control mechanisms
 - **APIs**:
+
   - Weather API for cloud coverage and sun visibility prediction
   - Firebase for logging and debugging
 - **Power Management**: Ensures peak wattage draw does not exceed average power generated
@@ -146,6 +153,65 @@ The system relies on a Flask server with the following endpoints:
 - **GET Endpoints**:
 
   - `/status`: Returns current system status including camera state and intervals
+
+## **ModelLog Collection**:
+
+In the project, Firebase Firestore is used as the primary database for logging system operations and model detections. The Flask server interacts with two main Firestore collections to store critical data:
+
+- Stores detection results from the YOLO model
+- Captures system performance metrics like CPU and memory usage
+- Contains timestamps of each detection event
+- When Firebase Storage is enabled, includes links to captured images
+- Example document structure:
+  ```
+  {
+    "model_details": {
+      "detections": [
+        {
+          "bbox": [240.5, 180.3, 320.7, 260.8],
+          "confidence": 0.92,
+          "class_id": 0,
+          "distance_x": 20.5,
+          "distance_y": -15.2
+        }
+      ],
+      "timestamp": "2025-03-08T16:47:23.456789"
+    },
+    "raspberry_details": {
+      "cpu_percent": 35.2,
+      "memory_percent": 42.8,
+      "disk_percent": 56.7
+    },
+    "image_url": "https://storage.example.com/solar_panel_images/20250308_164723.jpg",
+    "timestamp": "2025-03-08T16:47:23.456789"
+  }
+  ```
+
+2. **ProgramLog Collection**:
+   - Records weather API responses
+   - Stores interval calculation formulas and logic
+   - Tracks next scheduled detection times
+   - Documents manual interval changes from the dashboard
+   - Example document structure:
+     ```
+     {
+       "weather_response": {
+         "weather_condition": "Partly Cloudy",
+         "weather_description": "scattered clouds",
+         "temperature": 293.15,
+         "clouds": 45,
+         "wind_speed": 3.2,
+         "timestamp": "2025-03-08T16:47:23.456789"
+       },
+       "interval_formula": "Based on Partly Cloudy with 45% cloud coverage",
+       "next_interval_time": 1741050443.456789,
+       "timestamp": "2025-03-08T16:47:23.456789"
+     }
+     ```
+
+These Firestore collections are queried by the Next.js dashboard to display real-time system status and historical data. The Flask server's endpoints `/postcurrentstatus` and `/postprogramdetails` handle writing to these collections, while the frontend periodically retrieves and displays this data to provide administrators with comprehensive monitoring capabilities[1][2].
+
+This database structure enables efficient debugging, performance analysis, and historical tracking of the solar panel's operation over time, forming a critical part of the system's monitoring infrastructure.
 
 ## Mechanical Design
 
@@ -178,24 +244,60 @@ https://github.com/user-attachments/assets/0c48888f-dec7-4363-8610-fab38e45028e
 ## Setup and Installation
 
 1. Clone the repository
-2. Install dependencies:
+
+   ```bash
+   git clone https://github.com/ashworks1706/AI-Solar-Panel.git
+   cd AI-Solar-Panel
    ```
-   pip install flask opencv-python ultralytics firebase-admin requests
+2. Create a virtual environment with Python 3.11
+
+   ```bash
+   cd python
+   python3.11 -m venv venv
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
    ```
-3. Configure environment variables for weather API and Firebase
-4. Start the Flask server:
+3. Install dependencies
+
+   ```bash
+   pip install -r python/requirements.txt
    ```
-   python app.py
+4. Configure environment variables for weather API
+
+   - Create a `.env` file in the project root with your API keys:
+
    ```
-5. Configure hardware components
+   WEATHER_API_KEY=your_openweather_api_key
+   WEATHER_LAT=37.7749
+   WEATHER_LON=-122.4194
+   ```
+
+   and get firebase-secret.json from your project, place it in your root directory.
+5. Start the Flask server
+
+   ```bash
+   python python/flask.py
+   ```
+6. Run the dashboard (in a separate terminal)
+
+   ```bash
+   npm install
+   npm run dev
+   ```
+7. Configure hardware components
+
+   - Connect Raspberry Pi to camera module
+   - Set up the microcontroller for motor control
+   - Ensure proper power connections for all components
+
+The dashboard will be available at http://localhost:3000, and the Flask API will be running at http://localhost:5000.
 
 ## Current Progress
 
 ### Mechanical
 
-- [ ] Select appropriate solar panel based on wattage requirements
-- [ ] Select appropriate energy storage solution (battery)
-- [ ] Create initial design sketches
+- [X] Select appropriate solar panel based on wattage requirements
+- [X] Select appropriate energy storage solution (battery)
+- [X] Create initial design sketches
 - [ ] Develop preliminary mechanical design
 - [ ] Conduct initial FEA analysis for wind effects and stability
 - [ ] Implement waterproofing measures
@@ -211,13 +313,13 @@ https://github.com/user-attachments/assets/0c48888f-dec7-4363-8610-fab38e45028e
 - [X] Integrate weather API for intelligent interval scheduling
 - [X] Develop Firebase logging for debugging and monitoring
 - [X] Create Next.js admin dashboard interface
-- [ ] Complete integration with C++ motor control system
+- [X] Complete integration with C++ motor control system
 
 ## Contributors
 
 - **@Ampers8nd (Justin Erd.)**: Mechanical design
 - **@Zhoujjh3 (Justin Zhou)**: Electrical components
-- **@somwrks (Ash S.)**: Deep learning development
+- **@ashworks1706 (Ash S.)**: Deep learning development
 
 ## Contributing
 

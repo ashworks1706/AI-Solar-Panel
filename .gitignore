@@ -7,3 +7,7 @@ appConfig.json
 /models/sun_tracker_v3/sun_tracker_v3_float32.tflite
 *.onnx
 .vscode
+node_modules
+firebase/firebase-credentials.json
+.env
+/python/venv
