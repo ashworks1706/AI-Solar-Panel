@@ -11,3 +11,6 @@ node_modules
 firebase/firebase-credentials.json
 .env
 /python/venv
+.next
+.vscode
+python/__pycache__

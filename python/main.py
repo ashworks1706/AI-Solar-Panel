@@ -12,6 +12,7 @@ from supervision import Detections
 from ultralytics import YOLO
 import firebase_admin
 from firebase_admin import credentials, firestore
+import psutil
 
 # Suppress warnings
 warnings.filterwarnings('ignore', category=UserWarning)
@@ -45,6 +46,7 @@ except Exception as e:
 
 # Weather API configuration 
 WEATHER_API_KEY = os.environ.get("WEATHER_API_KEY", "22ba524647a0d39172ebc63307bbf2f1")
+
 LAT = float(os.environ.get("WEATHER_LAT", "37.7749"))  # Default latitude
 LON = float(os.environ.get("WEATHER_LON", "-122.4194"))  # Default longitude
 
@@ -127,6 +129,8 @@ def get_weather_data():
             "temperature": data["main"]["temp"],
             "clouds": data["clouds"]["all"],
             "wind_speed": data["wind"]["speed"],
+            "sunrise": data["sys"]["sunrise"],
+            "sunset": data["sys"]["sunset"],
             "timestamp": datetime.now().isoformat()
         }
         return weather_data
@@ -135,40 +139,50 @@ def get_weather_data():
         return None
 
 def calculate_next_interval():
-    """Calculate the next interval time based on weather conditions"""
+    """Calculate the next interval time based on weather conditions and time of day"""
     global interval_time, next_interval_time
     
     if weather_data is None:
         get_weather_data()
     
     if weather_data:
-        # Base interval on weather conditions
-        weather_condition = weather_data["weather_condition"].lower()
-        cloud_coverage = weather_data.get("clouds", 0)
+        # Get current time
+        current_time = time.time()
+        sunrise = weather_data.get("sunrise")
+        sunset = weather_data.get("sunset")
         
-        # Adjust interval based on weather conditions
-        if "clear" in weather_condition or cloud_coverage < 20:
-            # Clear sky or minimal clouds: shorter interval
-            new_interval = 60  # 1 minute
-        elif "cloud" in weather_condition or cloud_coverage < 70:
-            # Partly cloudy: medium interval
-            new_interval = 180  # 3 minutes
+        # Check if it's nighttime (after sunset or before sunrise)
+        is_nighttime = current_time > sunset or current_time < sunrise
+        
+        if is_nighttime:
+            # If sun is set, use a very long interval until next sunrise
+            time_until_sunrise = sunrise - current_time if current_time < sunrise else (sunrise + 86400) - current_time
+            new_interval = min(int(time_until_sunrise), 3600)  # Cap at 1 hour max
+            interval_formula = "Nighttime - sun is set, waiting until sunrise"
         else:
-            # Overcast or rainy: longer interval
-            new_interval = 300  # 5 minutes
+            # Base interval on weather conditions during daytime
+            weather_condition = weather_data["weather_condition"].lower()
+            cloud_coverage = weather_data.get("clouds", 0)
             
+            # Adjust interval based on weather conditions
+            if "clear" in weather_condition or cloud_coverage < 20:
+                # Clear sky or minimal clouds: shorter interval
+                new_interval = 60  # 1 minute
+            elif "cloud" in weather_condition or cloud_coverage < 70:
+                # Partly cloudy: medium interval
+                new_interval = 180  # 3 minutes
+            else:
+                # Overcast or rainy: longer interval
+                new_interval = 300  # 5 minutes
+            
+            interval_formula = f"Daytime - Based on {weather_condition} with {cloud_coverage}% cloud coverage"
+        
         # Update the interval time
         interval_time = new_interval
         next_interval_time = datetime.now().timestamp() + interval_time
         
         # Log the interval calculation to Firebase
-        if firebase_enabled:
-            db.collection("ProgramLog").add({
-                "weather_response": weather_data,
-                "interval_formula": f"Based on {weather_condition} with {cloud_coverage}% cloud coverage",
-                "next_interval_time": next_interval_time,
-                "timestamp": datetime.now().isoformat()
-            })
+        post_program_details_to_firebase(weather_data, interval_formula, next_interval_time)
         
         return interval_time
     
@@ -249,8 +263,11 @@ def process_image_with_model(image, return_annotated=False):
         print(f"Error processing image: {e}")
         return {"error": str(e)}, None, None
 
-def camera_thread_function():
-    """Function to run in a separate thread for continuous camera operation"""
+# Remove the entire get_model_response() endpoint function
+
+# Modify the camera function to run directly instead of in a thread
+def camera_function():
+    """Function to run the camera and model detection"""
     global camera_active, cap, last_detection_time, next_interval_time
     
     try:
@@ -261,13 +278,14 @@ def camera_thread_function():
             camera_active = False
             return
         
-        # Remove Firebase Storage bucket initialization
-        
         # Initial calculations
         calculate_next_interval()
         
         # Create results directory
         os.makedirs("results", exist_ok=True)
+        
+        print("Camera started, beginning detection loop")
+        camera_active = True
         
         while camera_active:
             # Check if it's time to capture and process
@@ -286,29 +304,23 @@ def camera_thread_function():
                 # Process the frame
                 results, annotated_frame, output_path = process_image_with_model(frame, return_annotated=True)
                 
-                # Log results to Firebase
-                if "error" not in results and firebase_enabled:
+                # Log results to Firebase using the internal function
+                if "error" not in results:
                     # Get system info
-                    import psutil
                     system_info = {
                         "cpu_percent": psutil.cpu_percent(),
                         "memory_percent": psutil.virtual_memory().percent,
                         "disk_percent": psutil.disk_usage('/').percent
                     }
                     
-                    # Remove image upload functionality
-                    
-                    # Log model status without image URL
-                    log_data = {
-                        "model_details": {
+                    # Log model status using internal function
+                    post_current_status_to_firebase(
+                        model_details={
                             "detections": results["detections"],
                             "timestamp": results["timestamp"]
                         },
-                        "raspberry_details": system_info,
-                        "timestamp": datetime.now().isoformat()
-                    }
-                    
-                    db.collection("ModelLog").add(log_data)
+                        raspberry_details=system_info
+                    )
                 
                 # Calculate next interval
                 get_weather_data()  # Update weather data
@@ -320,17 +332,18 @@ def camera_thread_function():
             time.sleep(1)
         
     except Exception as e:
-        print(f"Camera thread error: {e}")
+        print(f"Camera function error: {e}")
     finally:
         if cap is not None and cap.isOpened():
             cap.release()
         camera_active = False
+        print("Camera stopped")
         
 # Flask API Endpoints
 @app.route('/start_stop_camera', methods=['PUT'])
 def start_stop_camera():
     """Endpoint to start or stop the camera and model detection"""
-    global camera_active, camera_thread
+    global camera_active
     
     try:
         data = request.json
@@ -341,9 +354,7 @@ def start_stop_camera():
             if model is None:
                 return jsonify({"error": "Model not loaded"}), 500
             
-            # Start camera in a separate thread
-            camera_active = True
-            camera_thread = threading.Thread(target=camera_thread_function)
+            camera_thread = threading.Thread(target=camera_function)
             camera_thread.daemon = True
             camera_thread.start()
             
@@ -354,10 +365,8 @@ def start_stop_camera():
             })
             
         elif action == 'stop' and camera_active:
-            # Stop the camera thread
+            # Signal the camera function to stop
             camera_active = False
-            if camera_thread:
-                camera_thread.join(timeout=5.0)
             
             return jsonify({
                 "status": "success",
@@ -412,15 +421,12 @@ def change_interval():
         interval_time = new_interval
         next_interval_time = datetime.now().timestamp() + interval_time
         
-        # Log to Firebase
-        if firebase_enabled:
-            db.collection("ProgramLog").add({
-                "action": "interval_changed_manually",
-                "old_interval": old_interval,
-                "new_interval": interval_time,
-                "next_interval_time": next_interval_time,
-                "timestamp": datetime.now().isoformat()
-            })
+        # Log to Firebase using internal function
+        post_program_details_to_firebase(
+            weather_response=weather_data,
+            interval_formula=f"Interval changed manually from {old_interval}s to {interval_time}s",
+            next_interval_time=next_interval_time
+        )
         
         return jsonify({
             "status": "success",
@@ -436,196 +442,58 @@ def change_interval():
             "timestamp": datetime.now().isoformat()
         }), 500
 
-@app.route('/getmodelresponse', methods=['POST'])
-def get_model_response():
-    """Endpoint to process an image or video and return model predictions"""
-    try:
-        # Check if model is loaded
-        if model is None:
-            return jsonify({
-                "status": "error",
-                "message": "Model not loaded",
-                "timestamp": datetime.now().isoformat()
-            }), 500
-        
-        # Check if type is specified
-        if 'type' not in request.form:
-            return jsonify({
-                "status": "error",
-                "message": "Type (image or video) not specified",
-                "timestamp": datetime.now().isoformat()
-            }), 400
-            
-        file_type = request.form['type'].lower()
-        
-        if 'file' not in request.files:
-            return jsonify({
-                "status": "error",
-                "message": "No file provided",
-                "timestamp": datetime.now().isoformat()
-            }), 400
-            
-        file = request.files['file']
-        
-        if file.filename == '':
-            return jsonify({
-                "status": "error",
-                "message": "Empty filename",
-                "timestamp": datetime.now().isoformat()
-            }), 400
-            
-        if file_type == 'image':
-            # Process image
-            # Convert the file to an OpenCV image
-            file_bytes = file.read()
-            nparr = np.frombuffer(file_bytes, np.uint8)
-            image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-            
-            results, _, _ = process_image_with_model(image)
-            return jsonify(results)
-            
-        elif file_type == 'video':
-            # For video, we'll process frame by frame
-            # Save the uploaded video to a temporary file
-            temp_dir = "temp"
-            os.makedirs(temp_dir, exist_ok=True)
-            temp_filename = os.path.join(temp_dir, f"temp_video_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4")
-            file.save(temp_filename)
-            
-            # Process the video
-            try:
-                cap = cv2.VideoCapture(temp_filename)
-                if not cap.isOpened():
-                    return jsonify({
-                        "status": "error",
-                        "message": "Could not open video file",
-                        "timestamp": datetime.now().isoformat()
-                    }), 500
-                
-                frames_processed = 0
-                all_detections = []
-                
-                while True:
-                    ret, frame = cap.read()
-                    if not ret:
-                        break
-                        
-                    # Process the frame
-                    results, _, _ = process_image_with_model(frame)
-                    
-                    if "detections" in results:
-                        all_detections.append({
-                            "frame": frames_processed,
-                            "detections": results["detections"]
-                        })
-                        
-                    frames_processed += 1
-                    
-                cap.release()
-                
-                # Clean up the temporary file
-                if os.path.exists(temp_filename):
-                    os.remove(temp_filename)
-                    
-                return jsonify({
-                    "status": "success",
-                    "frames_processed": frames_processed,
-                    "detections": all_detections,
-                    "timestamp": datetime.now().isoformat()
-                })
-                
-            except Exception as e:
-                # Clean up the temporary file in case of error
-                if os.path.exists(temp_filename):
-                    os.remove(temp_filename)
-                raise e
-                
-        else:
-            return jsonify({
-                "status": "error",
-                "message": f"Unsupported file type: {file_type}. Supported types are 'image' or 'video'.",
-                "timestamp": datetime.now().isoformat()
-            }), 400
-            
-    except Exception as e:
-        return jsonify({
-            "status": "error",
-            "message": str(e),
-            "timestamp": datetime.now().isoformat()
-        }), 500
 
-@app.route('/postcurrentstatus', methods=['POST'])
-def post_current_status():
-    """Endpoint to log current model and Raspberry Pi status to Firebase"""
+# Remove these API endpoints and convert to internal functions
+def post_current_status_to_firebase(model_details, raspberry_details=None):
+    """Internal function to log current model and Raspberry Pi status to Firebase"""
     try:
-        data = request.json
-        
-        # Validate required fields
-        if 'model_details' not in data or 'raspberry_details' not in data:
-            return jsonify({
-                "status": "error",
-                "message": "Missing required fields: model_details or raspberry_details",
-                "timestamp": datetime.now().isoformat()
-            }), 400
+        if not firebase_enabled:
+            return False
             
-        # Add timestamp if not provided
-        if 'timestamp' not in data:
-            data['timestamp'] = datetime.now().isoformat()
+        # Get system info if not provided
+        if raspberry_details is None:
+            raspberry_details = {
+                "cpu_percent": psutil.cpu_percent(),
+                "memory_percent": psutil.virtual_memory().percent,
+                "disk_percent": psutil.disk_usage('/').percent
+            }
+            
+        # Prepare data
+        log_data = {
+            "model_details": model_details,
+            "raspberry_details": raspberry_details,
+            "timestamp": datetime.now().isoformat()
+        }
             
         # Log to Firebase
-        if firebase_enabled:
-            db.collection("ModelLog").add(data)
-        
-        return jsonify({
-            "status": "success",
-            "message": "Status logged successfully",
-            "timestamp": datetime.now().isoformat()
-        })
+        db.collection("ModelLog").add(log_data)
+        return True
         
     except Exception as e:
-        return jsonify({
-            "status": "error",
-            "message": str(e),
-            "timestamp": datetime.now().isoformat()
-        }), 500
+        print(f"Error logging model status to Firebase: {e}")
+        return False
 
-@app.route('/postprogramdetails', methods=['POST'])
-def post_program_details():
-    """Endpoint to log program details to Firebase"""
+def post_program_details_to_firebase(weather_response, interval_formula, next_interval_time):
+    """Internal function to log program details to Firebase"""
     try:
-        data = request.json
-        
-        # Validate required fields
-        required_fields = ['weather_response', 'interval_formula', 'next_interval_time']
-        missing_fields = [field for field in required_fields if field not in data]
-        
-        if missing_fields:
-            return jsonify({
-                "status": "error",
-                "message": f"Missing required fields: {', '.join(missing_fields)}",
-                "timestamp": datetime.now().isoformat()
-            }), 400
+        if not firebase_enabled:
+            return False
             
-        # Add timestamp if not provided
-        if 'timestamp' not in data:
-            data['timestamp'] = datetime.now().isoformat()
+        # Prepare data
+        log_data = {
+            "weather_response": weather_response,
+            "interval_formula": interval_formula,
+            "next_interval_time": next_interval_time,
+            "timestamp": datetime.now().isoformat()
+        }
             
         # Log to Firebase
-        if firebase_enabled:
-            db.collection("ProgramLog").add(data)
-        
-        return jsonify({
-            "status": "success",
-            "message": "Program details logged successfully",
-            "timestamp": datetime.now().isoformat()
-        })
+        db.collection("ProgramLog").add(log_data)
+        return True
         
     except Exception as e:
-        return jsonify({
-            "status": "error",
-            "message": str(e),
-            "timestamp": datetime.now().isoformat()
-        }), 500
+        print(f"Error logging program details to Firebase: {e}")
+        return False
 
 @app.route('/status', methods=['GET'])
 def get_status():
@@ -656,7 +524,7 @@ def initialize():
     global model
     
     # Specify the default model path
-    model_path = os.environ.get("MODEL_PATH", "models/sun_tracker_v3/sun_tracker_v3_float32.tflite")
+    model_path = os.environ.get("MODEL_PATH", "../models/sun_tracker_v3/sun_tracker_v3_float32.tflite")
     
     # Load the YOLO model
     model = load_yolo_model(model_path)

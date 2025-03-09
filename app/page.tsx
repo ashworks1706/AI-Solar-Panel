@@ -205,7 +205,7 @@ export default function Home() {
   };
 
   return (
-    <div className="flex  flex-col min-h-screen bg-gray-100">
+    <div className="flex dark flex-col min-h-screen bg-dark">
       {/* Header */}
       <Navbar className="bg-blue-800 text-white">
         <div className="flex justify-between items-center w-full">
