@@ -12,6 +12,8 @@ This repository contains the deep learning component of our AI-powered solar pan
 
 ![image](https://github.com/user-attachments/assets/cb524227-639e-42ce-a87a-55f1a9b45cd9)
 
+![image](https://github.com/user-attachments/assets/5658303b-1b3e-42e5-9a68-147aa8356478)
+
 ## Key Features
 
 - **Sun Position Detection**: Utilizes a lightweight deep learning model for real-time sun tracking in various weather conditions.
