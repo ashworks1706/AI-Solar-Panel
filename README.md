@@ -275,11 +275,12 @@ https://github.com/user-attachments/assets/0c48888f-dec7-4363-8610-fab38e45028e
 5. Start the Flask server
 
    ```bash
-   python python/flask.py
+   python flask.py
    ```
 6. Run the dashboard (in a separate terminal)
 
    ```bash
+   cd ..
    npm install
    npm run dev
    ```
