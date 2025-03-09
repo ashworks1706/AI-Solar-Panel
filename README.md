@@ -22,6 +22,8 @@ This repository contains the deep learning component of our AI-powered solar pan
 
 ![image](https://github.com/user-attachments/assets/251e4fba-2b79-47d3-964e-e6c5e91af843)
 
+![image](https://github.com/user-attachments/assets/908d1270-42eb-47bd-b705-28c26f4ddce1)
+
 
 ## Key Features
 
